@@ -7,3 +7,6 @@ primaryColor = "#1e90ff"
 
 [client]
 toolbarMode = "viewer"
+
+[server]
+runOnSave = false
