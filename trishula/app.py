@@ -136,11 +136,14 @@ def _day_zip() -> bytes:
     import io
     import json
     import zipfile
+    import pandas as pd
     buf = io.BytesIO()
     parts = {"prints.parquet": lambda: rec.prints_df(), "chain_snapshots.parquet": lambda: rec.chain_df(),
              "spot.parquet": lambda: rec.spot_df(), "es1m.parquet": lambda: rec.es_df(),
              "candles5.parquet": lambda: rec.candles5_df(), "spx1m.parquet": lambda: rec.candles_df(),
-             "opt1m_backfill.parquet": lambda: rec.opt1m_df()}          # L22: the ridges' pre-restart source
+             "opt1m_backfill.parquet": lambda: rec.opt1m_df(),          # L22: the ridges' pre-restart source
+             "dt2_scorecard.parquet": lambda: (pd.concat(list(rec.ui_state.get("_dt2_cards", {}).values()), ignore_index=True)
+                                               if rec.ui_state.get("_dt2_cards") else None)}   # v0.17: DT v2 signals + outcomes
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         for name, fn in parts.items():
             try:

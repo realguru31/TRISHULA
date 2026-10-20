@@ -3,6 +3,23 @@
 Semantic versioning: MAJOR.MINOR.PATCH. The running version is shown in the app's
 status bar, every tab footer, and the Recorder diagnostics panel.
 
+## v0.17.0 — 2026-10-20 · DT v2: the tested settings as defaults + live scorecard (L24)
+- VS3D → DT opens in **v2 · tested** (classic DT one click away, unchanged, with its tested reading in the caption).
+  Defaults are the settings that held up out of sample on 11 sessions (6–20 Oct, research/l24), core/dtv2.py:
+  · squares: ADAPTIVE band = max(floor 200, α 0.25 × the strike's own last-30-min volume), ±0.30 % of spot, 15 watch
+    strikes, 10-min per-strike cooldown, counted from 09:30 (classic "5 % of dot" band was inert: ~150 squares/h)
+  · ▲▼ follow = ≥ 2 net strikes the same colour within 3 min; bright when dealer GEX > 0 (naive, morning OI at the
+    minute's spot), grey = stand aside (in −GEX following lost 2–5 pts per signal; the textbook switch failed)
+  · ● initiation = 10-min net flow ≥ 5 % of volume (±50 of spot) and price ≥ 4 pts the same way → follow
+  · first signal 09:40, 10-min cooldown between signals; GEX strip under the tape; sliders for every setting
+  · research per signal at 20 min (week 6–13 / 14–20 Oct): follow +1.76 / +2.69 (31 / 24), initiation +1.08 / +2.59
+    (75 / 65) — reproduced exactly by core/dtv2.py
+- **Scorecard** under the tape: every signal today with the SPX move 10 / 20 / 30 min later, hit rate and average per
+  signal type (and follow with GEX > 0 only). Kept per session until a reboot and added to the 📦 day zip
+  (dt2_scorecard.parquet) so results can be collected across days.
+- Tested and NOT used: textbook GEX switch, filled/hollow vs next-morning OI (no information), off-pattern squares,
+  price-regime switch, one-label-per-burst on v2.
+
 ## v0.16.5 — 2026-10-20 · ridge height toggle: AG / unusual (L23)
 - New control above the ridges: **AG** (default) = contracts per minute on one scale, AG's view (where the volume is);
   **unusual** = each strike vs its OWN last 30 min (robust z: median / MAD, current minute excluded, ≥ 0, unsmoothed,

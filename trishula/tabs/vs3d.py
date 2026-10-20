@@ -587,25 +587,195 @@ def render(rec, ctl, ts_ms=None):
                     _img(rd["board"])
     if tabs[6].open:
         with tabs[6]:
-            st.caption("DT — repositioning tape · netflow lens (participant) · a square marks the minute a strike's "
-                       "net paper crosses a new band vs its yesterday-final dot · causal, never repaints")
-            st.markdown(
-                "<div style='font-size:.85rem;line-height:1.7'>"
-                "<span style='color:#1e90ff'>■</span> blue filled = bullish, extending (net-long strike adds, or fresh paper bought) · "
-                "<span style='color:#1e90ff'>□</span> blue hollow = bullish, receding (net-short strike covered) · "
-                "<span style='color:#ff00ff'>■</span> magenta filled = bearish, extending (net-short strike adds, or fresh paper sold) · "
-                "<span style='color:#ff00ff'>□</span> magenta hollow = bearish, receding (net-long strike unwound) · "
-                "no prior position (|dot| below the floor) → always filled · one square per new band crossed</div>",
-                unsafe_allow_html=True)
-            d1, d2, d3, d4, d5 = st.columns([1, 1, 1, 1, 0.8])
-            d5.checkbox("From 20:15 (GTH)", True, key="dt_gth",
-                        help="with 🌙 GTH on: dot = book at 20:15 and overnight prints count as moves; off: from 09:30 only")
-            d1.slider("band % of dot", 1.0, 25.0, 5.0, 0.5, key="dt_band")
-            d2.slider("abs floor (contracts)", 50, 1000, 200, 25, key="dt_floor")
-            d3.slider("± % of spot", 0.2, 2.0, 0.75, 0.05, key="dt_prox")
-            d4.slider("watch strikes", 4, 30, 10, 1, key="dt_watch")
-            try:
-                png, n_ev = build_dt(rec, exps, ts_ms)
-                _img(png)
-            except Exception as e:                           # noqa: BLE001
-                st.caption(f"⚠ DT error: {type(e).__name__}: {e}")
+            dmode = st.segmented_control("DT mode", ["v2 · tested", "classic"], default="v2 · tested", key="dt_mode",
+                                         label_visibility="collapsed",
+                                         help="v2 = the settings that held up out of sample on 11 sessions (research/l24): "
+                                              "adaptive band, follow arrows, GEX gate, initiation, live scorecard. "
+                                              "classic = your original DT (band % of dot).")
+            if (dmode or "v2 · tested") == "v2 · tested":
+                _dt_v2(rec, exps, ts_ms)
+            else:
+                _dt_classic(rec, exps, ts_ms)
+
+
+def _dt_classic(rec, exps, ts_ms):
+    st.caption("DT classic — repositioning tape · netflow lens (participant) · a square marks the minute a strike's "
+               "net paper crosses a new band vs its yesterday-final dot · causal, never repaints · "
+               "tested (research/l24): following these squares had no edge; fading ABSORBED bursts (≥3 strikes, "
+               "price within 1 pt) was the useful reading · hollow/filled did not match next-morning OI")
+    st.markdown(
+        "<div style='font-size:.85rem;line-height:1.7'>"
+        "<span style='color:#1e90ff'>■</span> blue filled = bullish, extending (net-long strike adds, or fresh paper bought) · "
+        "<span style='color:#1e90ff'>□</span> blue hollow = bullish, receding (net-short strike covered) · "
+        "<span style='color:#ff00ff'>■</span> magenta filled = bearish, extending (net-short strike adds, or fresh paper sold) · "
+        "<span style='color:#ff00ff'>□</span> magenta hollow = bearish, receding (net-long strike unwound) · "
+        "no prior position (|dot| below the floor) → always filled · one square per new band crossed</div>",
+        unsafe_allow_html=True)
+    d1, d2, d3, d4, d5 = st.columns([1, 1, 1, 1, 0.8])
+    d5.checkbox("From 20:15 (GTH)", True, key="dt_gth",
+                help="with 🌙 GTH on: dot = book at 20:15 and overnight prints count as moves; off: from 09:30 only")
+    d1.slider("band % of dot", 1.0, 25.0, 5.0, 0.5, key="dt_band")
+    d2.slider("abs floor (contracts)", 50, 1000, 200, 25, key="dt_floor")
+    d3.slider("± % of spot", 0.2, 2.0, 0.75, 0.05, key="dt_prox")
+    d4.slider("watch strikes", 4, 30, 10, 1, key="dt_watch")
+    try:
+        png, n_ev = build_dt(rec, exps, ts_ms)
+        _img(png)
+    except Exception as e:                           # noqa: BLE001
+        st.caption(f"⚠ DT error: {type(e).__name__}: {e}")
+
+
+# ── DT v2 (v0.17.0): tested defaults · follow arrows · GEX gate · initiation · scorecard ──────────────
+def _dt_v2(rec, exps, ts_ms):
+    from core import dtv2 as V
+    ss = st.session_state
+    st.caption("DT v2 — the settings that held up on 11 sessions out of sample (research/l24) · squares: adaptive band = "
+               "max(floor, α × strike's own last-30-min volume) · ▲▼ follow = ≥ N net strikes the same colour within 3 min "
+               "(bright when dealer GEX > 0, grey = stand aside: in −GEX following lost) · ● initiation = 10-min net flow "
+               "≥ 5 % of volume and price ≥ 4 pts the same way → follow · from 09:30, first signal 09:40, 10-min cooldown "
+               "between signals · scorecard = what SPX did 10 / 20 / 30 min later. Small edges, verify live before trading.")
+    c = st.columns(6)
+    alpha = c[0].slider("α · band = α × own 30-min vol", 0.10, 1.0, V.ALPHA, 0.05, key="dt2_alpha")
+    floor = c[1].slider("floor (contracts)", 50, 1000, int(V.FLOOR), 25, key="dt2_floor")
+    prox = c[2].slider("± % of spot", 0.1, 1.5, V.PROX, 0.05, key="dt2_prox")
+    watch = c[3].slider("watch strikes", 4, 30, V.WATCH, 1, key="dt2_watch")
+    cool = c[4].slider("per-strike cooldown (min)", 0, 30, V.COOLDOWN, 1, key="dt2_cool")
+    need = c[5].slider("follow: net strikes in 3 min", 1, 4, V.NEED, 1, key="dt2_need")
+    try:
+        res = build_dt2(rec, exps, ts_ms, alpha, float(floor), prox, int(watch), int(cool), int(need))
+    except Exception as e:                                   # noqa: BLE001
+        st.caption(f"⚠ DT v2 error: {type(e).__name__}: {e}")
+        return
+    if res is None:
+        st.info("DT v2 needs the regular session (09:30–16:00): no minutes yet for this session.")
+        return
+    png, card, summ, note = res
+    _img(png)
+    st.markdown("**Scorecard** — every signal today, scored on the SPX move after it (points, in the signal's direction)")
+    if len(summ):
+        st.dataframe(summ, hide_index=True, width="stretch")
+    if len(card):
+        show = card.assign(t=card["t"].dt.strftime("%H:%M"), gex=card["gex_pos"].map({True: "+", False: "−", None: "?"}))
+        st.dataframe(show[["t", "type", "dir", "px", "gex", "fw10", "fw20", "fw30"]].iloc[::-1].round(2), hide_index=True,
+                     width="stretch", height=min(420, 38 + 35 * len(show)))
+    st.caption(note)
+
+
+def build_dt2(rec, exps, ts_ms, alpha, floor, prox, watch, cool, need):
+    from core import dtv2 as V
+    from core import session as S
+    from core import spikes as SP
+    from tabs import agrev3d as R3
+    e0 = exps[0]
+    day = D.session_date(rec)
+    spot_now, _ = rec.spot_now()
+    LD.stage("DT v2 · minute flow", 0.3)
+    p = IV.prep_prints(rec.prints_df(e0), rec.greeks, spot_now)
+    if ts_ms and len(p):
+        p = p[p["ts_ms"] <= ts_ms]
+    if len(p):
+        p = p[S.mask(p["ts"], day)]
+    c1 = R3.candles_for(rec, e0, day)
+    f5 = R3.fill5(rec, e0, day, p, c1)
+    if f5 is not None:
+        c1 = f5 if c1 is None else pd.concat([c1[["m", "sym", "strike", "cp", "size", "prem", "net"]], f5], ignore_index=True)
+    mt = R3.merge_candles(SP.minute_table(p) if len(p) else pd.DataFrame(columns=["m", "sym", "strike", "cp", "size", "prem", "net"]), c1)
+    bars = D.bars_for(rec, day, upto_ms=ts_ms)
+    if bars is None or bars.empty:
+        return None
+    o, end = pd.Timestamp(dt.datetime.combine(day, dt.time(9, 30))), pd.Timestamp(dt.datetime.combine(day, dt.time(15, 59)))
+    last = min(pd.Timestamp(bars["t"].max()), end)
+    if last < o:
+        return None
+    minutes = pd.date_range(o, last, freq="1min")
+    spot = pd.Series(bars["c"].astype(float).values, index=pd.to_datetime(bars["t"]).dt.floor("1min"))
+    spot = spot[~spot.index.duplicated(keep="last")].reindex(minutes).ffill()
+    mt = mt[(mt["m"] >= o) & (mt["m"] <= last)] if len(mt) else mt
+    nf, vol = V.minute_frames(mt, minutes)
+    ds = rec.dsign_table(e0)
+    dot = (ds.assign(nf=np.where(ds["type"] == "call", 1.0, -1.0) * ds["seed_net"]).groupby("strike")["nf"].sum()
+           if ds is not None and len(ds) else None)
+    LD.stage("DT v2 · squares + signals", 0.55)
+    sq = V.squares(nf, vol, spot, dot, alpha=alpha, floor=floor, prox=prox, watch=watch, cooldown=cool)
+    fo = V.follow(sq, minutes, need=need)
+    ini = V.initiation(nf, vol, spot)
+    # GEX gate: morning OI of the 0DTE chain, ATM IV from the chain
+    ch = rec.live_chain(e0)
+    gex = pd.Series(dtype=float)
+    if ch is not None and len(ch) and "oi" in ch:
+        legs = ch[["strike", "cp", "oi"]].copy()
+        ivs = pd.to_numeric(ch.get("iv"), errors="coerce") if "iv" in ch else pd.Series(dtype=float)
+        near = (ch["strike"] - spot_now).abs() <= 25 if spot_now == spot_now else ch["strike"] == ch["strike"]
+        iv = float(np.nanmedian(ivs[near])) if ivs is not None and len(ivs) and np.isfinite(ivs[near]).any() else 0.16
+        gex = V.gex_path(legs, spot, dt.datetime.combine(day, dt.time(16, 0)), float(np.clip(iv, 0.05, 1.0)))
+    card = V.scorecard({"follow": fo, "initiation": ini}, spot, gex)
+    try:
+        rec.ui_state.setdefault("_dt2_cards", {})[str(day)] = card.assign(day=str(day))
+    except Exception:                                        # noqa: BLE001
+        pass
+    png = B.fig_png(_dt2_figure(sq, fo, ini, gex, spot, minutes, day, prox))
+    sq_h = len(sq) / max(len(minutes) / 60.0, 1 / 60)
+    note = (f"{e0} · {len(sq)} squares ({sq_h:.0f}/h) · α {alpha:.2f} · floor {int(floor)} · ±{prox:.2f}% · watch {watch} · "
+            f"cooldown {cool} min · follow needs {need} · GEX now "
+            + (f"{'+' if gex.iloc[-1] > 0 else '−'}${abs(gex.iloc[-1]) / 1e9:.1f}B" if len(gex) and gex.iloc[-1] == gex.iloc[-1] else "—")
+            + " · research: follow +1.8 / +2.7 pts per signal at 20 min (weeks 6–13 / 14–20 Oct), initiation +1.1 / +2.6")
+    return png, card, V.summarize(card), note
+
+
+def _dt2_figure(sq, fo, ini, gex, spot, minutes, day, prox):
+    import matplotlib.pyplot as plt
+    import matplotlib.dates as mdates
+    from core.terrain import DARK
+    fg, (ax, ag) = plt.subplots(2, 1, figsize=(12.5, 6.4), dpi=100, sharex=True, gridspec_kw=dict(height_ratios=[5, 0.8], hspace=0.05))
+    fg.patch.set_facecolor(DARK)
+    for a in (ax, ag):
+        a.set_facecolor(DARK); a.tick_params(colors="#8b949e", labelsize=8)
+        for spn in a.spines.values():
+            spn.set_color("#30363d")
+    ax.plot(spot.index, spot.values, color="#e8ecf2", lw=1.1, zorder=4)
+    if len(sq):
+        for sgn, col in ((1, "#1e90ff"), (-1, "#ff00ff")):
+            h = sq[(sq["s"] == sgn) & sq["filled"]]
+            ax.scatter(h["t"], h["k"], s=40, marker="s", color=col, lw=0, zorder=5)
+            h = sq[(sq["s"] == sgn) & ~sq["filled"]]
+            ax.scatter(h["t"], h["k"], s=40, marker="s", facecolors="none", edgecolors=col, lw=1.2, zorder=5)
+    gpos = (gex.reindex(minutes) > 0) if len(gex) else pd.Series(False, index=minutes)
+    for t, d in fo[fo != 0].items():
+        y = spot.get(t, np.nan)
+        live = bool(gpos.get(t, False))
+        ax.scatter([t], [y + (5 if d > 0 else -5)], marker="^" if d > 0 else "v", s=170, zorder=7,
+                   color=("#2ecc71" if d > 0 else "#ff4d6d") if live else "none",
+                   edgecolors=("white" if live else "#8b949e"), lw=1.2)
+    for t, d in ini[ini != 0].items():
+        y = spot.get(t, np.nan)
+        ax.scatter([t], [y], marker="o", s=70, zorder=8, color="#ffd166" if d > 0 else "#ff9f1a", edgecolors="black", lw=0.6)
+        ax.annotate("▲" if d > 0 else "▼", (t, y), xytext=(0, 9 if d > 0 else -13), textcoords="offset points",
+                    color="#ffd166" if d > 0 else "#ff9f1a", fontsize=8, ha="center", zorder=8)
+    lo = [float(np.nanmin(spot.values))]; hi = [float(np.nanmax(spot.values))]
+    if len(sq):
+        lo.append(float(sq["k"].min())); hi.append(float(sq["k"].max()))
+    pad = max(5.0, 0.08 * (max(hi) - min(lo)))
+    ax.set_ylim(min(lo) - pad, max(hi) + pad)
+    if len(gex):
+        g = gex.reindex(minutes) / 1e9
+        ag.fill_between(g.index, 0, g.values, where=g.values > 0, color="#2ecc71", alpha=0.6, lw=0)
+        ag.fill_between(g.index, 0, g.values, where=g.values <= 0, color="#ff4d6d", alpha=0.6, lw=0)
+        ag.axhline(0, color="#8b949e", lw=0.6)
+    ag.set_ylabel("GEX $B", color="#8b949e", fontsize=7)
+    x1 = max(minutes[-1] + pd.Timedelta(minutes=25), minutes[0] + pd.Timedelta(hours=1))
+    ax.set_xlim(minutes[0] - pd.Timedelta(minutes=5), min(x1, pd.Timestamp(dt.datetime.combine(day, dt.time(16, 5)))))
+    from matplotlib.lines import Line2D
+    hs = [Line2D([], [], marker="s", ls="none", ms=7, color="#1e90ff", label="bullish paper (calls bought / puts sold)"),
+          Line2D([], [], marker="s", ls="none", ms=7, color="#ff00ff", label="bearish paper"),
+          Line2D([], [], marker="s", ls="none", ms=7, mfc="none", mec="#8b949e", label="hollow = against prior book (unverified)"),
+          Line2D([], [], marker="^", ls="none", ms=10, color="#2ecc71", mec="white", label="follow ▲▼ (GEX > 0)"),
+          Line2D([], [], marker="^", ls="none", ms=10, mfc="none", mec="#8b949e", label="follow, GEX ≤ 0 → stand aside"),
+          Line2D([], [], marker="o", ls="none", ms=8, color="#ffd166", mec="black", label="initiation ● (follow)")]
+    lg = ax.legend(handles=hs, loc="upper left", bbox_to_anchor=(1.005, 1.0), fontsize=8, facecolor="#11151c",
+                   edgecolor="#30363d", labelcolor="#c9d1d9")
+    lg.set_zorder(10)
+    ax.set_title(f"DT v2 · {len(sq)} squares · {int((fo != 0).sum())} follow · {int((ini != 0).sum())} initiation · watch ±{prox:.2f}%",
+                 color="#8b949e", fontsize=9, loc="left")
+    ag.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
+    return fg
+
