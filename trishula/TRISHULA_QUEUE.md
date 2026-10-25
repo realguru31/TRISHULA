@@ -4,6 +4,18 @@ Deployed: **v0.17.0**. Nothing gets built until the user types **APPROVE**. Depl
 Rules unchanged: whole zip every time (delete trishula/ → unzip → commit → Reboot app) · version on screen + CHANGELOG ·
 secrets only in Streamlit · one repo, no GitHub tokens · Colab scripts outside the repo, both tokens prefilled.
 
+## ✅ v0.19.2 (APPROVE 15:07) L42 built · L43 run (fail) · L44 paused pending new AG posts — (user: "why are we locking ourselves to a single doctrine?")
+- CORRECTION of L34: "repaints" ≠ "uses the future". Scaling to the peak of the window UP TO NOW (AG's screenshot at
+  10:20 is scaled to its own window ending 10:20) uses no future data — it only re-colours the past as the day goes on.
+  L34 tested only the strict no-repaint version; the AG-style version was wrongly written off as hindsight.
+- L42 Tetris scale switch renamed and AG mode made the default for reverse-engineering: "AG · window up to now
+  (re-colours the past)" vs "no repaint (frozen)". Both causal.
+- L43 (research) causal AG-mode test: at every 10-min step recompute A/E with data up to that step, AG scaling; record
+  when a warm block APPEARS at/near price and how many minutes after the actual turn; score SPX 10/20/30 min after the
+  block appears (confirmation, not prediction) vs random; same 12 days with OI + walk-forward if thresholds are involved.
+- L44 (research) back to reverse-engineering AG freely: any scaling/normalisation (incl. window-to-now), single-leg vs
+  all, 0/1DTE, per-strike vs price grid — matched against his 16 / 20 / 21 Oct screenshots each at its own posting time.
+
 ## ✅ BUILT v0.19.1 (APPROVE 25 Oct 12:36) — L41
 - L41 "0DTE / 0+1DTE" toggle everywhere it isn't already (user: "add option of 1dte across as toggle"):
   · Tetris A/E: 0+1DTE sums both expiries per strike, each leg with its OWN time to expiry; same no-repaint rules

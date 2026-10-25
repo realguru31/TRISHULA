@@ -259,11 +259,11 @@ def _dash(rec, exp, legs, cfg, ridge):
                           key="ag_tt_ovl", label_visibility="collapsed",
                           help="weight = prior-close open interest, optionally plus contracts traded since 20:15 ET the evening before "
                                "(overnight session, GTH on) or since the 09:30 regular open")
-    scl = tt[1].segmented_control("scale", ["no repaint", "hindsight"], default="no repaint", key="ag_tt_scale",
+    scl = tt[1].segmented_control("scale", ["AG · to now", "frozen"], default="AG · to now", key="ag_tt_scale2",
                                   label_visibility="collapsed",
-                                  help="no repaint (default) = each strike scaled to its peak SO FAR: a drawn column never changes. "
-                                       "hindsight = scaled to the DAY's peak (the v0.18 look): uses the future, repaints — the warm "
-                                       "blocks at highs/lows only appear after the fact (L34, 25 Oct).")
+                                  help="AG · to now (default, v0.19.2) = each strike scaled to its peak in the window UP TO NOW, as AG's "
+                                       "screenshots are — no future data, but past colours re-rank as the day goes on. "
+                                       "frozen = scaled to its peak so far, a drawn column never changes.")
     tt_ex = tt[4].segmented_control("Tetris expiries", ["0DTE", "0+1DTE"], default="0DTE", key="ag_tt_exp",
                                     label_visibility="collapsed",
                                     help="0DTE = the selected expiry (how A/E were matched to AG's 16 Oct chart) · 0+1DTE = "
@@ -273,7 +273,7 @@ def _dash(rec, exp, legs, cfg, ridge):
     if v4mode in ("A · γ", "E · vega", None):
         try:
             res = R3.tetris_build(rec, exp, day, asof, ks, bars, mt,
-                                  {"E · vega": "E"}.get(v4mode, "A"), pal or "AG", ovl, smo, causal=(scl != "hindsight"),
+                                  {"E · vega": "E"}.get(v4mode, "A"), pal or "AG", ovl, smo, causal=(scl == "frozen"),
                                   exps=R3.ridge_exps(rec, exp, "0+1DTE") if tt_ex == "0+1DTE" else [exp])
         except Exception as e:                                     # noqa: BLE001
             res = None

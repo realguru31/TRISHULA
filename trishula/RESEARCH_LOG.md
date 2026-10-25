@@ -114,3 +114,13 @@ NEXT: rerun l29.py UNCHANGED (+ S7) when ~25–30 fresh days exist. Data: weekly
 🟡 L35 rerun per mode (25 Oct, all 22 days with 1DTE): 0DTE → S6 "middle" passes (+2.74 / t 2.05 / 3 of 4); 0+1DTE → S6
    "more" passes (+2.70 / t 2.66 / 4 of 4, setting 8-pt move ≥ 3 unusual strikes). S6 positive in all 6 position × mode
    runs → the most consistent candidate. Still 36 tests in total → keep collecting; rerun unchanged at ~40 days.
+
+## 9. 25 Oct — correction + L43
+✅ CORRECTION: scaling to the window UP TO NOW (AG's way) uses no future data; it only re-ranks past colours. The L34
+   "hindsight" verdict applied to the end-of-day picture, not to what a trader sees live.
+❌ L43 (research/l43, pre-registered, 12 days): AG-scale Tetris rebuilt every 10 min. A: fading "price into heat" −0.78
+   (t −0.8); "turn confirmed" −3.8 (n 10). E: "price into heat" +5.3 pts at 20 min (t 2.1, 70 % right) on only 10 trades.
+   Fails the A-and-E rule. E V1 = something to re-check on more days, not to trade.
+🟡 L44 status: the l25 brute force (25,256 combos on 21 Oct, 4,800 on 20 Oct) already included per-strike scaling over the
+   window up to AG's posting time; best remained the price grid. Without NEW AG screenshots there is nothing new to fit
+   — and fitting more on 3 pictures is curve fitting. Resume when he posts again.

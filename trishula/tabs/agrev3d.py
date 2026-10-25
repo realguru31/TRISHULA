@@ -143,7 +143,7 @@ def tetris_build(rec, exp, day, asof_ms, ks, bars, mt, model, palette, overlay, 
         V, B = V[keep], B[keep]
     ttl = (f"TETRIS · {' + '.join(ex_set)} · model {'A · OI×γ' if model == 'A' else 'E · OI×vega'} · {overlay} · "
            f"{idx[0]:%H:%M}–{idx[-1]:%H:%M} ET · " + ("each strike scaled to its peak SO FAR · no repaint" if causal else
-           "⚠ each strike scaled to the DAY's peak — REPAINTS, hindsight only (warm blocks mark where price went)"))
+           "AG scale · each strike scaled to its peak in the window up to now (no future data; past re-ranks as the day goes on)"))
     res = (TT.figure(V, B, Sp, palette, ttl), TT.topdown(V, B, Sp, palette), TT.legend_html(palette))
     while len(cache) >= 4:
         cache.pop(next(iter(cache)))

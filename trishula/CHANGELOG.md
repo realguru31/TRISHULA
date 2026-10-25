@@ -3,6 +3,14 @@
 Semantic versioning: MAJOR.MINOR.PATCH. The running version is shown in the app's
 status bar, every tab footer, and the Recorder diagnostics panel.
 
+## v0.19.2 — 2026-10-25 · Tetris default = AG scale (window up to now) (L42)
+- Tetris scale switch: **AG · to now** (default) = each strike scaled to its peak in the window up to now, as AG's
+  screenshots are — no future data, past colours re-rank as the day goes on · **frozen** = peak so far, never changes.
+  (v0.19.0's "hindsight" label was wrong: it never used future data.)
+- L43 (research/l43, pre-registered, 12 days with OI, chart rebuilt every 10 min with data up to that moment):
+  A "price into heat → fade" −0.78 pts/20 min (t −0.8, 36 % of days +); A "turn confirmed" −3.8 (n 10); E "price into
+  heat → fade" +5.3 (t 2.1) but only 10 trades on 7 days. Rule needed A and E → FAIL. No tradeable Tetris rule yet.
+
 ## v0.19.1 — 2026-10-25 · 0DTE / 0+1DTE toggle everywhere (L41)
 - **Tetris A/E:** "0DTE / 0+1DTE" switch — 0+1DTE sums both expiries per strike, each leg with its own time to expiry;
   no-repaint rules unchanged. Default 0DTE (how A/E were matched to AG).
