@@ -245,7 +245,8 @@ def figure(mt, spk, bars, t0, t1, strikes, pin=None, side="C+P", top=1, contract
     if has_pane:
         _pane(f, contract, t0, x_end_t)
     f.update_layout(template="plotly_dark", paper_bgcolor=BG, plot_bgcolor=BG, height=h, bargap=0.1, barmode="stack",
-                    margin=dict(l=6, r=6, t=34, b=6), title=dict(text=title, font=dict(size=12, color="#c9d1d9"), x=0.01))
+                    margin=dict(l=6, r=6, t=34, b=6), title=dict(text=title, font=dict(size=12, color="#c9d1d9"), x=0.01),
+                    showlegend=bool(has_pane and isinstance(contract, list) and len(contract) > 1))
     return f
 
 
@@ -291,7 +292,8 @@ def _pane(f, contract, t0, x_end):
                 f.add_scatter(x=seg.index, y=seg.values, mode="lines", row=2, col=1, secondary_y=sec, showlegend=False,
                               line=dict(color=_rgba(RISE if sgn > 0 else FALL, 0.35), width=7, shape="hv"), hoverinfo="skip")
         f.add_scatter(x=px.index, y=px.values, mode="lines", line=dict(color=base_c, width=1.5, shape="hv"),
-                      row=2, col=1, secondary_y=sec, showlegend=False,
+                      row=2, col=1, secondary_y=sec, showlegend=multi, name=f"{c.get('name', '')} price ({'right' if sec else 'left'} axis)",
+                      legendgroup="pane",
                       hovertemplate=f"{c.get('name', '')} %{{x|%H:%M}} $%{{y:.2f}}<extra></extra>")
         if not multi:
             for a, b, sgn in swings(px):                                # L15b: AG-style rising / falling stretches
@@ -304,18 +306,28 @@ def _pane(f, contract, t0, x_end):
             if not multi:
                 f.add_annotation(x=t, y=top_, text=txt, showarrow=False, xanchor="left", xshift=3, yanchor="top",
                                  row=2, col=1, font=dict(color=DIR[dn][1], size=11), bgcolor="rgba(13,21,48,0.75)")
-        f.add_scatter(x=[t0, x_end], y=[lo_, lo_], mode="lines+text", text=["", f"{c.get('name', '')} low ${lo_:.2f}"],
-                      textposition="bottom left", textfont=dict(color=base_c if multi else "#c9d1d9", size=10),
+        # v0.19 L40: each low label on its own side (call left, put right) — they used to overlap at the right edge
+        lt = ([f"{c.get('name', '')} low ${lo_:.2f}", ""] if (multi and not sec) else ["", f"{c.get('name', '')} low ${lo_:.2f}"])
+        f.add_scatter(x=[t0, x_end], y=[lo_, lo_], mode="lines+text", text=lt,
+                      textposition="bottom right" if (multi and not sec) else "bottom left",
+                      textfont=dict(color=base_c if multi else "#c9d1d9", size=10),
                       line=dict(color=base_c if multi else "#c9d1d9", dash="dash", width=1),
                       row=2, col=1, secondary_y=sec, showlegend=False, hoverinfo="skip")
         f.update_yaxes(range=[lo_ - 0.06 * span, hi_ + 0.14 * span], row=2, col=1, secondary_y=sec,
                        tickfont=dict(color=base_c if multi else "#c9d1d9"), gridcolor="#1c2547",
-                       side=("right" if sec or not multi else "left"), showgrid=not sec)
+                       side=("right" if sec or not multi else "left"), showgrid=not sec,
+                       title=dict(text=f"{c.get('name', '')} price $", font=dict(color=base_c if multi else "#c9d1d9", size=10)),
+                       tickprefix="$")
         f.add_bar(x=c["vol"].index, y=c["vol"].values, marker_color=base_c if multi else "#38bdf8", row=3, col=1,
                   showlegend=False, hovertemplate=f"{c.get('name', '')} %{{x|%H:%M}} %{{y:,.0f}}c<extra></extra>")
     for r in (2, 3):
         f.update_xaxes(range=[t0, x_end], gridcolor="#1c2547", tickformat="%H:%M", row=r, col=1, showticklabels=(r == 3))
-    f.update_yaxes(gridcolor="#1c2547", side="right", row=3, col=1)
+    f.update_yaxes(gridcolor="#1c2547", side="right", row=3, col=1,
+                   title=dict(text="contracts / min", font=dict(color="#8b949e", size=10)))
+    if len(cs) > 1:
+        ytop2 = float(f.get_subplot(2, 1).yaxis.domain[1]) if True else 0.4
+        f.update_layout(legend=dict(orientation="h", x=0.99, xanchor="right", y=ytop2 - 0.005, yanchor="top",
+                                    bgcolor="rgba(13,21,48,0.7)", font=dict(size=10, color="#c9d1d9")))
     try:
         ytop = float(f.get_subplot(2, 1).yaxis.domain[1])
     except Exception:                                   # noqa: BLE001
@@ -407,11 +419,12 @@ def ridgeline(mt, spk, bars, t0, t1, strikes, pin=None, side="C+P", top=1, contr
     f.add_annotation(text=f"tallest ridge = {q:,.0f} {unit}", xref="paper", yref="paper", x=0.995, y=1.0,
                      xanchor="right", yanchor="bottom", showarrow=False, font=dict(size=10, color="#8b9bc4"))
     f.update_yaxes(range=[min(ks) - gap, max(ks) + (GAP_H + 1.2) * gap], side="right", dtick=10 if gap <= 5 else None,
-                   gridcolor="#1c2547", tickformat=",.0f", row=1, col=1)
+                   gridcolor="#1c2547", tickformat=",.0f", row=1, col=1,
+                   title=dict(text="strike", font=dict(color="#8b9bc4", size=10)))
     f.update_xaxes(range=[t0, x_end], gridcolor="#1c2547", tickformat="%H:%M", row=1, col=1, showticklabels=not has_pane)
     if has_pane:
         _pane(f, contract, t0, x_end)
     f.update_layout(template="plotly_dark", paper_bgcolor=BG, plot_bgcolor=BG, height=h, bargap=0.1, barmode="stack",
-                    margin=dict(l=6, r=6, t=34, b=6), hovermode="closest",
+                    margin=dict(l=6, r=6, t=34, b=6), hovermode="closest", showlegend=bool(has_pane and len(contract) > 1),
                     title=dict(text=title, font=dict(size=12, color="#c9d1d9"), x=0.01))
     return f

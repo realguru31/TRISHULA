@@ -59,8 +59,16 @@ def player_bar(rec) -> dict:
         st.info("⏸ REPLAY — the screen is frozen on an old frame. Press ⏹ LIVE to return to live data.", icon="⏸")
     with st.container(border=True):
         c = st.columns([1.15, 0.42, 0.42, 0.42, 0.62, 1.05, 2.7, 1.5, 1.1])
-        if live:
-            c[0].markdown("<div style='padding-top:.45rem;font-weight:700;color:#ff4d4d'>🔴 LIVE</div>",
+        if live:                                          # v0.19 L39: colour = market state, not "recording"
+            from .session import market_state
+            from .timeutil import now_et
+            try:
+                ms_ = market_state(now_et().replace(tzinfo=None), set(getattr(rec, "all_exps", []) or []))
+            except Exception:                             # noqa: BLE001
+                ms_ = "RTH"
+            lab, col = {"RTH": ("🟢 LIVE · RTH", "#3fb950"), "GTH": ("⚪ LIVE · GTH", "#d0d7de"),
+                        "CLOSED": ("🔴 CLOSED", "#ff4d4d")}[ms_]
+            c[0].markdown(f"<div style='padding-top:.45rem;font-weight:700;color:{col}'>{lab}</div>",
                           unsafe_allow_html=True)
         else:
             t = fr[ss["pl_idx"]]
@@ -81,9 +89,11 @@ def player_bar(rec) -> dict:
                                format_func=_lbl, label_visibility="collapsed")
         else:
             c[6].caption("replay frames appear as the recorder stores chain snapshots (every 60 s in session)")
-        c[7].select_slider("refresh", options=list(range(1, 11)), value=5, key="pl_refresh",
-                           format_func=lambda m: f"refresh {m} min", label_visibility="collapsed",
-                           help="screen refresh while LIVE (snapshots are still recorded every 60 s)")
+        r1, r2 = c[7].columns([3.2, 1])
+        r1.select_slider("refresh", options=list(range(1, 11)), value=5, key="pl_refresh",
+                         format_func=lambda m: f"refresh {m} min", label_visibility="collapsed",
+                         help="screen refresh while LIVE (snapshots are still recorded every 60 s)")
+        r2.button("⟳", key="pl_b_now", help="refresh now (v0.19)")       # a click reruns the page
         c[8].toggle("🌙 GTH", value=True, key="pl_gth",
                     help="ON: every screen spans the overnight session (Cboe GTH from 20:15 ET the evening "
                          "before, synthetic spot) through 16:00, dashed line at the 09:30 open. OFF: 09:30–16:00 only.")

@@ -92,7 +92,7 @@ def window_bounds(day, mt, asof_ms, win):
     return t0, t1
 
 
-def tetris_build(rec, exp, day, asof_ms, ks, bars, mt, model, palette, overlay, smooth):
+def tetris_build(rec, exp, day, asof_ms, ks, bars, mt, model, palette, overlay, smooth, causal=True, exps=None):
     """L18: Tetris figures (3-D blocks, top-down, legend), cached on the inputs."""
     from core import tetris as TT
     if not ks or bars is None or bars.empty:
@@ -104,22 +104,27 @@ def tetris_build(rec, exp, day, asof_ms, ks, bars, mt, model, palette, overlay, 
     idx = pd.date_range(t0.floor(TT.BUCKET), t1.floor(TT.BUCKET), freq=TT.BUCKET)
     if len(idx) < 3:
         return None
-    key = ("tt", S.gth(), exp, str(day), idx[-1], model, palette, overlay, smooth, tuple(ks), len(mt))
+    ex_set = list(exps) if exps else [exp]                    # v0.19.1 L41: 0DTE or 0+1DTE
+    key = ("tt", S.gth(), tuple(ex_set), str(day), idx[-1], model, palette, overlay, smooth, tuple(ks), len(mt), causal)
     cache = rec.ui_state.setdefault("_tetris", {})
     if key in cache:
         return cache[key]
     if model == "G":
         return _tetris_g(rec, exp, day, idx, t0, t1, ks, bars, mt, palette, overlay, smooth, key, cache)
-    with rec.lock:
-        legs = [(sym, k, cp) for sym, (ex, k, cp) in rec.legs.items() if ex == exp and k in set(ks)]
-        oi = {s_: rec.oi.get(s_, float("nan")) for s_, _, _ in legs}
-        iv = {s_: (rec.greeks.get(s_) or (float("nan"),))[0] for s_, _, _ in legs}
-    L = pd.DataFrame([(s_, k, cp, oi[s_], iv[s_]) for s_, k, cp in legs], columns=["sym", "strike", "cp", "oi", "iv"])
-    if L.empty or not L["oi"].fillna(0).gt(0).any():
-        return None
     b = bars.dropna(subset=["c"])
     Sp = b.set_index(pd.to_datetime(b["t"]))["c"].astype(float)
     Sb = Sp.groupby(Sp.index.floor(TT.BUCKET)).last().reindex(idx).ffill().bfill()
+    # v0.19 L36 (no repaint): a FIXED strike set for the session (±200 pts around the session's first price) so the
+    # colour quantiles never depend on where spot is now; the display is cropped to the ridge strikes afterwards
+    s0 = float(Sb.iloc[0])
+    with rec.lock:
+        legs = [(sym, ex, k, cp) for sym, (ex, k, cp) in rec.legs.items() if ex in ex_set and abs(k - s0) <= 200]
+        oi = {s_: rec.oi.get(s_, float("nan")) for s_, _, _, _ in legs}
+        iv = {s_: (rec.greeks.get(s_) or (float("nan"),))[0] for s_, _, _, _ in legs}
+    L = pd.DataFrame([(s_, ex, k, cp, oi[s_], iv[s_]) for s_, ex, k, cp in legs], columns=["sym", "exp", "strike", "cp", "oi", "iv"])
+    if L.empty or not L["oi"].fillna(0).gt(0).any():
+        return None
+    ivp, oip = _snap_paths(rec, set(L["sym"]), idx)
     ov = None
     if overlay.startswith("+") and mt is not None and len(mt):
         start = t0 if "20:15" in overlay else pd.Timestamp(dt.datetime.combine(day, dt.time(9, 30)))
@@ -128,18 +133,42 @@ def tetris_build(rec, exp, day, asof_ms, ks, bars, mt, model, palette, overlay, 
             ov = (m.assign(b=m["m"].dt.floor(TT.BUCKET)).pivot_table(index="b", columns="sym", values="size", aggfunc="sum")
                   .reindex(idx).fillna(0.0).cumsum())
     expiry = pd.Timestamp(dt.datetime.combine(dt.date.fromisoformat(exp), dt.time(16, 0)))
-    M = TT.greek_field(L, Sb, expiry, model, ov)
+    M = TT.greek_field(L, Sb, expiry, model, ov, ivp, oip)
     if M.empty:
         return None
-    V = TT.per_strike_peak(M, float(smooth))
-    B = TT.bands(V, palette)
-    ttl = (f"TETRIS · {exp} · model {'A · OI×γ' if model == 'A' else 'E · OI×vega'} · {overlay} · "
-           f"{idx[0]:%H:%M}–{idx[-1]:%H:%M} ET · each strike scaled to its own peak")
+    V = TT.per_strike_peak(M, float(smooth), causal)
+    B = TT.bands(V, palette, None, causal)
+    keep = np.isin(V.index.values.astype(float), np.asarray(ks, float))
+    if keep.any():
+        V, B = V[keep], B[keep]
+    ttl = (f"TETRIS · {' + '.join(ex_set)} · model {'A · OI×γ' if model == 'A' else 'E · OI×vega'} · {overlay} · "
+           f"{idx[0]:%H:%M}–{idx[-1]:%H:%M} ET · " + ("each strike scaled to its peak SO FAR · no repaint" if causal else
+           "⚠ each strike scaled to the DAY's peak — REPAINTS, hindsight only (warm blocks mark where price went)"))
     res = (TT.figure(V, B, Sp, palette, ttl), TT.topdown(V, B, Sp, palette), TT.legend_html(palette))
     while len(cache) >= 4:
         cache.pop(next(iter(cache)))
     cache[key] = res
     return res
+
+
+def _snap_paths(rec, syms, idx):
+    """v0.19 L36: IV and OI per bucket from the RECORDED chain snapshots (what was known at that time), so past columns
+    don't move when live IV / OI change. Returns (iv, oi) DataFrames buckets × sym, or (None, None)."""
+    from core import tetris as TT
+    try:
+        h = rec.chain_df()
+        if not len(h):
+            return None, None
+        h = h[h["sym"].astype(str).isin(syms)]
+        if h.empty:
+            return None, None
+        h = h.assign(b=pd.to_datetime(h["ts_ms"], unit="ms", utc=True).dt.tz_convert("America/New_York")
+                     .dt.tz_localize(None).dt.floor(TT.BUCKET), sym=h["sym"].astype(str))
+        ivp = h.pivot_table(index="b", columns="sym", values="iv", aggfunc="last").reindex(idx).ffill().bfill() if "iv" in h else None
+        oip = h.pivot_table(index="b", columns="sym", values="oi", aggfunc="last").reindex(idx).ffill().bfill() if "oi" in h else None
+        return ivp, oip
+    except Exception:                                              # noqa: BLE001
+        return None, None
 
 
 def _tetris_g(rec, exp, day, idx, t0, t1, ks, bars, mt, palette, overlay, smooth, key, cache):

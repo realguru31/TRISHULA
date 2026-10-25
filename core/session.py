@@ -79,3 +79,20 @@ def trading_day_for(now: dt.datetime) -> dt.date:
             return d
         return d + dt.timedelta(days=1)
     return d
+
+
+def market_state(now: dt.datetime, listed: set[str] | None = None) -> str:
+    """v0.19 L39: "RTH" (09:30–16:00 on a trading day) · "GTH" (Cboe overnight 20:15 → 09:30 into a trading day) ·
+    "CLOSED" (16:00–20:15, Friday night → Sunday 20:15, holidays). `listed` = SPXW expiry dates (a trading day has one);
+    without it, weekdays count as trading days."""
+    def trades(d: dt.date) -> bool:
+        return d.weekday() < 5 and (not listed or str(d) in listed)
+    t, d = now.time(), now.date()
+    if trades(d) and dt.time(9, 30) <= t < dt.time(16, 0):
+        return "RTH"
+    if t >= GTH_START:
+        nxt = d + dt.timedelta(days=1)
+        return "GTH" if trades(nxt) and d.weekday() != 4 else "CLOSED"
+    if t < dt.time(9, 30) and trades(d):
+        return "GTH"
+    return "CLOSED"

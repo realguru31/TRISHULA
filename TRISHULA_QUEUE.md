@@ -4,6 +4,26 @@ Deployed: **v0.17.0**. Nothing gets built until the user types **APPROVE**. Depl
 Rules unchanged: whole zip every time (delete trishula/ → unzip → commit → Reboot app) · version on screen + CHANGELOG ·
 secrets only in Streamlit · one repo, no GitHub tokens · Colab scripts outside the repo, both tokens prefilled.
 
+## ✅ BUILT v0.19.1 (APPROVE 25 Oct 12:36) — L41
+- L41 "0DTE / 0+1DTE" toggle everywhere it isn't already (user: "add option of 1dte across as toggle"):
+  · Tetris A/E: 0+1DTE sums both expiries per strike, each leg with its OWN time to expiry; same no-repaint rules
+  · Signals: one toggle for all signals (today S1/S7 already use 0+1DTE, S3–S6 0DTE only); walk-forward table shown for
+    the chosen mode
+  · DT v2: same toggle (squares / follow / initiation on 0+1DTE flow)
+  · default stays 0DTE until the 0+1DTE walk-forward says otherwise
+  · RESEARCH: rerun the L35 walk-forward unchanged in 0+1DTE mode on all 22 days — the 1DTE minute candles for 6–20 Oct
+    are already on file (OI-history pull); 24 Sep–5 Oct and 21–23 Oct have them too
+
+## ✅ BUILT — v0.19.0 (APPROVE 25 Oct 12:19 Doha) · trishula-v0.19.0.zip · NOT YET DEPLOYED
+Scope: L33 (Tetris A default, readable palette removed) · L36 (no-repaint Tetris A/E + Terrain) · L37 (DT v2 one slider,
+±% from control bar) · L38 refresh-now button · L39 status badge colours · L40 contract-pane labels · L34 + L35 research
+· L35b Signals sensitivity slider from L35. No-edge signals: user did not answer → default = hidden on the chart, with a
+"show unproven" toggle (hollow) — tell user.
+Progress (L35 next): L33 ✓ · L38 ✓ · L39 ✓ · L40 ✓ · L37 ✓ · L34 ✓ RESULT: warm blocks at turns are HINDSIGHT (day-peak scaling);
+  causal A/E has ~no warm blocks → 1 event on 12 OI days → no edge. Tetris scale toggle: no repaint (default) / hindsight.
+  L36 ✓ (Tetris A/E running peak + causal colour edges + fixed strike set + IV/OI from snapshots;
+  Terrain frozen past columns + snapshot backfill + dimmed projection; tests pass: past identical after chain change)
+
 ## ✅ BUILT — v0.18.1 (22 Oct 03:08): 1-min candles were dropped (dxfeed symbol {=m} vs code's "=1m") → backfill/sweep 0 since v0.16.1; fixed
 ## ✅ BUILT — v0.18.0 (APPROVE 21 Oct 15:00 + 22 Oct 02:16) · zip trishula-v0.18.0.zip (102 files, 0 tokens) · NOT YET DEPLOYED
 A1 memory · A2 live stalls · A3 ridges (sweep + ridgeline default / 3D / map, RTH, ±60, 0+1DTE) · A4 Tetris G default ·
@@ -13,6 +33,44 @@ switches · ridge caption shows "candle sweep (0DTE+1DTE…): N/N" within ~2 min
 Untested here (needs the live API): the sweep itself — verify with the caption on the first day.
 NEXT (waiting on data): ridge vs AG spike-by-spike on 21 Oct (trishula_21oct_dump.py) · 22 Oct 7720P bought/sold ·
 history depth (trishula_history2_dump.py). Research thread status → RESEARCH_LOG.md.
+
+## QUEUED 24 Oct (user review of Fri 23 Oct screens) — each needs APPROVE
+- L33 Tetris default back to A (AG palette); G and all "readable" views judged useless by the user (G = flat bands;
+  note the screen also ran G with "OI only" overlay). Keep G/E as options or drop G — user to decide.
+- L34 (research first) "warm Tetris block at price = reversal" (user circles: E — warm at the overnight low ~7650 and at
+  the day low ~7615 ~10:20; A — warm at the 04:30 high ~7670 and the 11:30–12:30 high). CAUTION: A/E scale each strike to
+  its peak over the WHOLE window, so earlier colours REPAINT as the day goes on — an end-of-day screenshot can look
+  prescient. Test causally: recompute A/E at each minute with data up to that minute only, flag "price enters a warm
+  (red/orange/tan) block", score SPX 10/20/30 min later vs random, on all history days (20 + new).
+- L35 (research first) Signals thresholds — walk-forward, NOT a single best fit: grid each signal's thresholds on days
+  1…N, test on the next days, roll forward; report only out-of-sample results; ship a threshold only if it holds across
+  folds (and say plainly if nothing does). Needs the history days + Thu 22 / Fri 23 (trishula_week_dump.py).
+- User verdict 24 Oct: DT v2 · tested and Signals views "completely useless" as they stand.
+- L33b remove the "readable" Tetris palette entirely (user 24 Oct) — AG palette only.
+- L35b ONE simple slider (user 24 Oct 19:06): Signals tab gets a single "sensitivity: fewer ↔ more signals" slider
+  (positions = the walk-forward-tested threshold sets, low → high), with a line under it: what that position did out of
+  sample on the history days. No per-signal settings on screen (an "advanced" expander at most).
+- L37 DT v2: replace the 6 sliders with the same single sensitivity slider; "± % of spot" comes from the control bar's
+  strike window at the top (not its own slider); other settings fixed at the tested values (advanced expander).
+- L38 player bar: a "⟳ refresh now" button next to "refresh N min".
+- L39 status badge colour: 🟢 LIVE · RTH (09:30–16:00) green · ⚪ LIVE · GTH (overnight) bright grey · 🔴 CLOSED red
+  (no session: weekend / after 16:15 until 20:15 / holidays); replay stays blue.
+- L40 contract pane labels (user 24 Oct 19:10, C+P pinned 7650): both side axes are PRICES — left blue = call $, right
+  orange = put $ — but nothing says so. Add axis titles in the line colours ("7650C $" left, "7650P $" right), a small
+  legend, "contracts / min" title on the volume bars below, put each "low $x" label on its own side (they overlap),
+  and keep the ridge strike axis visually separate from the pane's price axes.
+- L36 NO-REPAINT rule for every map (user 24 Oct: "same approach of NOT repainting in VS3D terrains"):
+  · Tetris A/E: each strike's peak = its peak SO FAR (running max up to that column), never the whole window → a column,
+    once drawn, never changes colour.
+  · VS3D Terrain: today the WHOLE 09:30–16:00 field is recomputed every frame from the CURRENT chain (OI/greeks now,
+    projected back and forward) and scaled by percentiles of the whole grid → the past repaints by design.
+    Proposed: left of "now" = frozen columns — each column computed once from the chain snapshot recorded at that minute
+    and kept; right of "now" = the projection from the current chain (as today), visibly separated (dashed "now" line,
+    projection dimmed); colour scale fixed per session (set at the first frame / manual cap), not re-percentiled each frame.
+  · NOT Book (its dots already carry the history) and NOT GEX³ (a single-time snapshot by design) — user 24 Oct.
+  · Terrain split CONFIRMED by user 24 Oct 18:39 (frozen past left, dimmed projection right). Colour: option 1 CONFIRMED 18:41 — each past column keeps the colours it was drawn with (locked at its minute);
+    the projection right of "now" is recomputed and re-coloured every frame (e.g. a level pink at 10:00 may turn red at
+    11:00 beyond the now line). Past never changes, future may.
 
 ---------------------------------------------------------------------------------------------------------------
 ## A. v0.18.0 "FIX RELEASE" — spec (BUILT, see above)

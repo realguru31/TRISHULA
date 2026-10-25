@@ -22,6 +22,10 @@ from . import dtv2 as V
 
 COOL = 10
 HIST = os.path.join(os.path.dirname(__file__), "data", "signal_history.csv")
+WF = os.path.join(os.path.dirname(__file__), "data", "signal_wf.csv")       # v0.19 L35 walk-forward result (mixed)
+WF_MODE = {"0DTE": os.path.join(os.path.dirname(__file__), "data", "signal_wf_0dte.csv"),
+           "0+1DTE": os.path.join(os.path.dirname(__file__), "data", "signal_wf_01dte.csv")}   # v0.19.1 L41
+POSITIONS = ["fewer", "middle", "more"]
 
 # code → (name, marker, tiers low→high, what it means)
 SIG = {
@@ -271,3 +275,137 @@ def table(ev_all: pd.DataFrame, hist: pd.DataFrame) -> pd.DataFrame:
             else:
                 rows.append(dict(signal=f"{code} {name}", tier=t, today=today, verdict=verdict(hist, code, t)))
     return pd.DataFrame(rows)
+
+
+
+# ── v0.19 L35/L35b: one sensitivity slider, walk-forward tested settings ─────────────────────────────────────────
+def wf_table(mode: str | None = None) -> pd.DataFrame:
+    try:
+        w = pd.read_csv(WF_MODE.get(mode, WF) if mode and os.path.exists(WF_MODE.get(mode, "")) else WF)
+    except Exception:                                        # noqa: BLE001
+        return pd.DataFrame(columns=["code", "position", "pick", "PASS"])
+    import ast
+    w["pick"] = [ast.literal_eval(x) if isinstance(x, str) and x.strip() else None for x in w["pick"]]
+    return w
+
+
+def picks_for(position: str, wf: pd.DataFrame) -> dict:
+    """{code: params} — the setting the walk-forward chose (trained on all days before the last test block)."""
+    r = wf[wf["position"] == position]
+    return {row.code: row.pick for row in r.itertuples() if row.pick is not None}
+
+
+def _blocks(o, S, rth, size_k, share, mode, rng_max=None, mult=None):
+    sig = pd.Series(0, index=rth)
+    o = o[(o.t >= rth[0]) & (o.t <= rth[-1])].sort_values("t")
+    if o.empty:
+        return sig
+    med = o.groupby("base").volume.transform(lambda v: v.where(v > 0).expanding().median().shift(1))
+    if mode == "S1":
+        big = o.volume >= np.maximum(100, size_k * med.fillna(np.inf)); side = share
+    else:
+        big = o.volume >= np.maximum(size_k, mult * med.fillna(np.inf)); side = 0.9
+    bought = o.askv >= side * o.volume; sold = o.bidv >= side * o.volume
+    d = np.where(bought, np.where(o.cp == 1, 1, -1), np.where(sold, np.where(o.cp == 1, -1, 1), 0))
+    m = (big & (d != 0)).values
+    e = o[m].assign(d=d[m])
+    ref = S.diff(15) if mode == "S1" else (S.rolling(30, min_periods=20).max() - S.rolling(30, min_periods=20).min())
+    for t, g in e.groupby("t"):
+        dd = int(np.sign(g.d.sum()))
+        if not dd or t not in ref.index or ref[t] != ref[t]:
+            continue
+        if (mode == "S1" and np.sign(ref[t]) == -dd) or (mode == "S7" and ref[t] <= rng_max):
+            sig[t] = dd
+    return cool(sig)
+
+
+def _s6(nf, vol, S, rth, pts, br):
+    s = pd.Series(0, index=rth)
+    if vol.empty or not len(vol.columns):
+        return s
+    K = vol.columns.values.astype(float); Sv = S.reindex(vol.index).ffill().values
+    N = np.abs(K[None, :] - Sv[:, None]) <= 50
+    b = vol.shift(1); med = b.rolling(30, min_periods=10).median(); mad = (b - med).abs().rolling(30, min_periods=10).median()
+    Z = ((vol - med) / (1.4826 * mad + 1)).values
+    brs = pd.Series(((Z > 4) & N).sum(1), index=vol.index).rolling(5, min_periods=1).max()
+    dp = S.diff(15)
+    s = pd.Series(np.where((brs >= br) & (dp >= pts), -1, np.where((brs >= br) & (dp <= -pts), 1, 0)), index=rth)
+    s[s.index < rth[0] + pd.Timedelta(minutes=10)] = 0
+    return cool(s)
+
+
+def compute_picks(o, S, rth, day, picks: dict, mode: str = "0DTE") -> pd.DataFrame:
+    """Events (t, code, d) for the walk-forward picks of one slider position. mode: "0DTE" = every signal on the 0DTE
+    tape only · "0+1DTE" = every signal on the 0DTE + 1DTE tape (v0.19.1 L41)."""
+    out = []
+    o0 = o[o["exp"] == str(day)] if mode == "0DTE" else o
+    o = o0
+    nf, vol = frames(o0, rth)
+    for code, p in picks.items():
+        try:
+            if code == "S1":
+                sg = _blocks(o, S, rth, p[0], p[1], "S1")
+            elif code == "S7":
+                sg = _blocks(o, S, rth, p[0], None, "S7", rng_max=p[2], mult=p[1])
+            elif code == "S3":
+                sg = s3_flip(o0, S, rth, p[0])
+            elif code == "S4":
+                sg = V.follow(V.squares(nf, vol, S, alpha=p[1]), rth, need=p[0])
+            elif code == "S5":
+                sg = V.initiation(nf, vol, S, share=p[0], pts=p[1])
+            elif code == "S6":
+                sg = _s6(nf, vol, S, rth, p[0], p[1])
+            else:
+                continue
+        except Exception:                                    # noqa: BLE001
+            continue
+        for t, d in sg[sg != 0].items():
+            out.append((t, code, int(d)))
+    return pd.DataFrame(out, columns=["t", "code", "d"])
+
+
+def figure_wf(ev: pd.DataFrame, S: pd.Series, wf: pd.DataFrame, position: str, day, show_unproven: bool, h: int = 560):
+    import plotly.graph_objects as go
+    f = go.Figure()
+    f.add_scatter(x=S.index, y=S.values, mode="lines", line=dict(color="#e8ecf2", width=1.6), showlegend=False,
+                  hovertemplate="SPX %{x|%H:%M} %{y:,.2f}<extra></extra>")
+    ok = {r.code: bool(r.PASS) for r in wf[wf["position"] == position].itertuples()}
+    n_hidden = 0
+    if len(ev):
+        rng = float(np.nanmax(S.values) - np.nanmin(S.values)) if S.notna().any() else 20.0
+        off = max(2.5, 0.04 * rng)
+        for code, g in ev.groupby("code"):
+            name, mk, _, _ = SIG[code]
+            proven = ok.get(code, False)
+            if not proven and not show_unproven:
+                n_hidden += len(g); continue
+            for d in (1, -1):
+                gg = g[g["d"] == d]
+                if gg.empty:
+                    continue
+                base = {"triangle": "triangle-up" if d > 0 else "triangle-down", "arrow": "arrow-up" if d > 0 else "arrow-down"}.get(mk, mk)
+                y = S.reindex(gg["t"]).values + (-off if d > 0 else off) * (1 + 0.6 * (list(SIG).index(code) % 3))
+                f.add_scatter(x=gg["t"], y=y, mode="markers", showlegend=False,
+                              marker=dict(symbol=base if proven else base + "-open", size=17 if proven else 12,
+                                          color=COL[d], line=dict(width=1.6, color=COL[d])),
+                              text=[f"{code} {name} · {'bullish' if d > 0 else 'bearish'} · "
+                                    f"{'passed walk-forward' if proven else 'no out-of-sample edge'}"] * len(gg),
+                              hovertemplate="%{text}<br>%{x|%H:%M}<extra></extra>")
+    f.update_layout(template="plotly_dark", paper_bgcolor="#0b0f14", plot_bgcolor="#0b0f14", height=h,
+                    margin=dict(l=6, r=6, t=30, b=6), hovermode="closest",
+                    title=dict(text=f"SIGNALS · {pd.Timestamp(day):%a %d %b} · sensitivity {position} · filled = passed the walk-forward "
+                                    f"test" + (f" · {n_hidden} unproven marks hidden" if n_hidden else ""),
+                               font=dict(size=12, color="#c9d1d9"), x=0.01),
+                    xaxis=dict(gridcolor="#1c2547", tickformat="%H:%M"), yaxis=dict(gridcolor="#1c2547", side="right", tickformat=",.0f"))
+    return f
+
+
+def wf_rows(wf: pd.DataFrame, position: str, ev: pd.DataFrame) -> pd.DataFrame:
+    r = wf[wf["position"] == position].copy()
+    r["signal"] = [f"{c} {SIG[c][0]}" for c in r["code"]]
+    r["today"] = [int((ev["code"] == c).sum()) if len(ev) else 0 for c in r["code"]]
+    r["verdict"] = np.where(r["PASS"], "✅ passed", "no edge")
+    r["setting"] = [str(p) if p is not None else "—" for p in r["pick"]]
+    return r[["signal", "verdict", "today", "per_day", "hit", "edge20", "t", "folds_pos", "n_oos", "setting"]].rename(columns={
+        "per_day": "marks/day (test)", "hit": "hit % (test)", "edge20": "pts @20 vs random (test)", "t": "t (test)",
+        "folds_pos": "test blocks +", "n_oos": "n (test)"})

@@ -36,16 +36,30 @@ BUCKET = "10min"
 
 
 def greek_field(legs: pd.DataFrame, S: pd.Series, expiry: pd.Timestamp, model: str,
-                overlay: pd.DataFrame | None = None) -> pd.DataFrame:
+                overlay: pd.DataFrame | None = None, ivpath: pd.DataFrame | None = None,
+                oipath: pd.DataFrame | None = None) -> pd.DataFrame:
     """legs: sym, strike, cp, oi, iv. S: spot per bucket (index = bucket times). overlay: buckets × sym of
     cumulative traded contracts to add to OI (None = OI only). Returns strikes × buckets (raw, unscaled)."""
     idx = S.index
-    T = np.maximum((expiry - idx).total_seconds() / (365 * 24 * 3600), 1 / (365 * 24 * 12))
+    T0 = np.maximum((expiry - idx).total_seconds() / (365 * 24 * 3600), 1 / (365 * 24 * 12))
     Sv = S.values.astype(float)
     out = {}
+    has_exp = "exp" in legs.columns
     for r in legs.itertuples():
-        iv = float(r.iv) if (r.iv == r.iv and r.iv and r.iv > 0) else 0.2
+        if has_exp and isinstance(r.exp, str):           # v0.19.1 L41: each leg with its OWN time to expiry (0+1DTE)
+            ex_ = pd.Timestamp(f"{r.exp} 16:00")
+            T = np.maximum((ex_ - idx).total_seconds() / (365 * 24 * 3600), 1 / (365 * 24 * 12))
+        else:
+            T = T0
+        iv0 = float(r.iv) if (r.iv == r.iv and r.iv and r.iv > 0) else 0.2
+        iv = np.full(len(idx), iv0)
+        if ivpath is not None and r.sym in ivpath:                 # v0.19: IV as recorded at each bucket
+            p_ = pd.to_numeric(ivpath[r.sym], errors="coerce").reindex(idx).values
+            iv = np.where(np.isfinite(p_) & (p_ > 0), p_, iv0)
         w = np.full(len(idx), float(r.oi) if r.oi == r.oi else 0.0)
+        if oipath is not None and r.sym in oipath:                 # v0.19: OI as recorded at each bucket
+            o_ = pd.to_numeric(oipath[r.sym], errors="coerce").reindex(idx).values
+            w = np.where(np.isfinite(o_), o_, w)
         if overlay is not None and r.sym in overlay:
             w = w + overlay[r.sym].reindex(idx).ffill().fillna(0.0).values
         if not w.any():
@@ -109,22 +123,41 @@ def per_time_peak(M: pd.DataFrame, smooth: float = 0.0) -> pd.DataFrame:
     return M.div(mx, axis=1).fillna(0.0).clip(0, 1)
 
 
-def per_strike_peak(M: pd.DataFrame, smooth: float = 0.0) -> pd.DataFrame:
+def per_strike_peak(M: pd.DataFrame, smooth: float = 0.0, causal: bool = True) -> pd.DataFrame:
+    """v0.19 L36 (no repaint): each strike scaled to its peak SO FAR — the running max up to that bucket, not the max
+    over the whole window. Every column depends only on data up to its own time, so once drawn it never changes."""
     if M.empty:
         return M
     if smooth:
         M = pd.DataFrame(gaussian_filter1d(M.values, smooth, axis=0), index=M.index, columns=M.columns)
-    mx = M.max(axis=1).replace(0, np.nan)
-    return M.div(mx, axis=0).fillna(0.0).clip(0, 1)
+    if not causal:                                   # v0.18 look: the DAY's peak (uses the future → repaints)
+        mx = M.abs().max(axis=1).replace(0, np.nan)
+        return M.div(mx, axis=0).fillna(0.0).clip(0, 1)
+    run = M.abs().cummax(axis=1).replace(0, np.nan)
+    return M.div(run).fillna(0.0).clip(0, 1)
 
 
-def bands(V: pd.DataFrame, palette: str, shares=None) -> np.ndarray:
+def bands(V: pd.DataFrame, palette: str, shares=None, causal: bool = True) -> np.ndarray:
     if V.empty:
         return np.zeros((0, 0), int)
     if palette == "AG":
         sh = AG_SHARE if shares is None else np.asarray(shares, float)
-        edges = np.quantile(V.values.ravel(), np.cumsum(sh)[:-1])
-        edges = np.maximum.accumulate(edges + np.arange(6) * 1e-12)
+        # v0.19 L36: colour edges are set CAUSALLY — column j is banded with the quantiles of all values up to and
+        # including column j, so a past column keeps the colours it was drawn with
+        # (mid-rank of each value among all values so far — ties, e.g. the many cells exactly at a strike's running
+        # peak, share one rank instead of all falling below a quantile edge)
+        X = V.values
+        out = np.zeros(X.shape, int)
+        qs = np.cumsum(sh)[:-1]
+        if not causal:
+            edges = np.maximum.accumulate(np.quantile(X.ravel(), qs) + np.arange(6) * 1e-12)
+            return np.clip(np.digitize(X, edges), 0, 6)
+        for j in range(X.shape[1]):
+            hist = np.sort(X[:, :j + 1].ravel())
+            lo = np.searchsorted(hist, X[:, j], side="left"); hi = np.searchsorted(hist, X[:, j], side="right")
+            pr = (lo + hi) / 2.0 / max(len(hist), 1)
+            out[:, j] = np.searchsorted(qs, pr, side="right")
+        return np.clip(out, 0, 6)
     else:
         edges = np.linspace(0, 1, 8)[1:-1]
     return np.clip(np.digitize(V.values, edges), 0, 6)

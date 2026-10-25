@@ -153,7 +153,29 @@ def build_terrain(rec, exps, ts_ms, ctl, canonical=False):
     if key in cache:
         return cache[key]
     LD.stage("terrain field", 0.5)
-    figs, notes = T.terrain_figures(ch, spot, exps, now, axis_day, bars, o, caps, peak)
+    # v0.19 L36: frozen past columns, shared by every viewer for this day + field options (rec.ui_state)
+    fstore = rec.ui_state.setdefault("_terr_frozen", {})
+    fkey = (str(axis_day), tuple(exps), T.frozen_sig(o))
+    for k_ in [k_ for k_ in fstore if k_[0] != str(axis_day)]:
+        fstore.pop(k_, None)
+    frozen = fstore.setdefault(fkey, {})
+    h_ = rec.chain_df()
+    snaps = np.unique(h_["ts_ms"].values) if len(h_) else np.array([], dtype=np.int64)
+
+    def _backfill(tau):
+        """chain as RECORDED at tau (nearest snapshot at or before it, ≤ 10 min old) → (chain, spot, time)."""
+        if not len(snaps):
+            return None
+        from core.timeutil import ET as _ET
+        ms = int(pd.Timestamp(tau).tz_localize(_ET).timestamp() * 1000)
+        i = np.searchsorted(snaps, ms, side="right") - 1
+        if i < 0 or ms - int(snaps[i]) > 10 * 60_000:
+            return None
+        ch_j, spot_j, now_j = D.frame(rec, exps, int(snaps[i]))
+        if ch_j.empty or not spot_j == spot_j:
+            return None
+        return ch_j, spot_j, now_j
+    figs, notes = T.terrain_figures(ch, spot, exps, now, axis_day, bars, o, caps, peak, frozen=frozen, backfill=_backfill)
     LD.stage("rendering terrain", 0.85)
     res = ([B.fig_png(f) for f in figs], notes)
     while len(cache) >= 8:
@@ -596,7 +618,7 @@ def render(rec, ctl, ts_ms=None):
             if dmode == "signals":
                 _signals(rec, exps, ts_ms)
             else:
-                _dt_v2(rec, exps, ts_ms)
+                _dt_v2(rec, exps, ts_ms, ctl)
 
 
 def _dt_classic(rec, exps, ts_ms):
@@ -628,13 +650,27 @@ def _dt_classic(rec, exps, ts_ms):
 
 # ── SIGNALS (v0.18.0, L30 — replaces DT classic) ───────────────────────────────────────────────
 def _signals(rec, exps, ts_ms):
+    """v0.19 L35b: ONE sensitivity slider. Each position = the settings a WALK-FORWARD test picked (chosen on earlier days,
+    scored only on later days it never saw — research/l35). Filled marks = passed; unproven hidden unless toggled."""
     from core import signals as SG
-    st.caption("SIGNALS — locked research rules (research/l28/l29.py, fixed 21 Oct before the history was pulled), never "
-               "fitted to the day shown · 0DTE + 1DTE tape (1-min candles first, prints for the newest minutes) · "
-               "one mark per signal per minute = its highest tier · hollow = no proven edge yet. Honest status: on the 9 fresh "
-               "days only S1 ×10 came close (t 2.0); nothing has proven edge — treat marks as context, not entries.")
+    ss = st.session_state
+    c1, c3, c2 = st.columns([3, 1.1, 1.2])
+    smode = c3.segmented_control("tape", ["0DTE", "0+1DTE"], default="0DTE", key="sig_mode", label_visibility="collapsed",
+                                 help="0DTE = every signal on today's expiry · 0+1DTE = every signal on today's AND the next "
+                                      "expiry (AG's ridges include 1DTE). Each mode has its own walk-forward record.") or "0DTE"
+    pos = c1.select_slider("Signal sensitivity", options=SG.POSITIONS, value="middle", key="sig_pos",
+                           help="fewer ↔ more marks. Each position uses the thresholds a walk-forward test chose "
+                                "(22 sessions: chosen on earlier days, scored on the next 3, rolled 4 times).")
+    show_u = c2.toggle("show unproven", value=False, key="sig_unproven",
+                       help="also draw signals that did NOT pass the walk-forward test, as hollow marks")
+    wf = SG.wf_table(smode)
+    r = wf[wf["position"] == (pos or "middle")]
+    npass = int(r["PASS"].sum()) if len(r) else 0
+    st.caption(f"**{pos} · {smode}** — {npass} of {len(r)} signals passed the walk-forward test at this sensitivity (pooled test-day edge "
+               "> 0, t ≥ 2, ≥ 3 of 4 test blocks positive). 6 signals × 3 positions were tested, so about one pass is "
+               "expected by luck alone — treat a pass as 'worth watching', not proven.")
     try:
-        res = build_signals(rec, exps, ts_ms)
+        res = build_signals(rec, exps, ts_ms, pos or "middle", bool(show_u), smode)
     except Exception as e:                                       # noqa: BLE001
         st.caption(f"⚠ signals error: {type(e).__name__}: {e}")
         return
@@ -643,25 +679,24 @@ def _signals(rec, exps, ts_ms):
         return
     fig, tbl, card = res
     st.plotly_chart(fig, width="stretch", key="sig_fig")
-    a, b = st.columns([1.35, 1])
+    a, b = st.columns([1.5, 1])
     with a:
-        st.markdown("**Record** — per signal × tier · hit % on all 20 researched days · points at 20 min vs random entries "
-                    "on the 9 fresh days (t ≥ 3 = edge, ≥ 2 = watch)")
-        st.dataframe(tbl, hide_index=True, width="stretch", height=min(700, 38 + 35 * len(tbl)))
+        st.markdown("**Out-of-sample record at this sensitivity** (test days only)")
+        st.dataframe(tbl, hide_index=True, width="stretch")
     with b:
         st.markdown("**Today** — every mark, SPX points after it in the mark's direction")
         if len(card):
             show = card.assign(t=card["t"].dt.strftime("%H:%M"), dir=card["d"].map({1: "▲", -1: "▼"}))
-            st.dataframe(show[["t", "code", "tier", "dir", "verdict", "px", "fw10", "fw20", "fw30"]].iloc[::-1].round(1),
-                         hide_index=True, width="stretch", height=min(700, 38 + 35 * len(show)))
+            st.dataframe(show[["t", "code", "dir", "verdict", "px", "fw10", "fw20", "fw30"]].iloc[::-1].round(1),
+                         hide_index=True, width="stretch", height=min(600, 38 + 35 * len(show)))
         else:
             st.caption("no marks yet today")
     with st.expander("what each signal is"):
         for code, (name, mk, tiers, what) in SG.SIG.items():
-            st.markdown(f"**{code} {name}** ({mk} · tiers {' / '.join(tiers)}) — {what}")
+            st.markdown(f"**{code} {name}** ({mk}) — {what}")
 
 
-def build_signals(rec, exps, ts_ms):
+def build_signals(rec, exps, ts_ms, position="middle", show_unproven=False, mode="0DTE"):
     from core import signals as SG
     from core import session as S
     from tabs import agrev3d as R3
@@ -693,47 +728,63 @@ def build_signals(rec, exps, ts_ms):
     rth = pd.date_range(o_, last, freq="1min")
     spot = pd.Series(bars["c"].astype(float).values, index=pd.to_datetime(bars["t"]).dt.floor("1min"))
     spot = spot[~spot.index.duplicated(keep="last")].reindex(rth).ffill()
-    key = ("sig", str(day), len(rth), 0 if p is None else len(p), 0 if c1 is None else len(c1), ts_ms)
+    key = ("sig2", str(day), len(rth), 0 if p is None else len(p), 0 if c1 is None else len(c1), ts_ms, position, show_unproven, mode)
     cache = rec.ui_state.setdefault("_signals", {})
     if key in cache:
         return cache[key]
     o = SG.minute_flow(c1, p, legs)
     LD.stage("signals · rules", 0.6)
-    ev_all = SG.compute(o, spot, rth, day)
-    ev = SG.top_tier(ev_all)
-    hist = SG.history()
+    wf = SG.wf_table(mode)
+    ev = SG.compute_picks(o, spot, rth, day, SG.picks_for(position, wf), mode)
     card = SG.score(ev, spot)
     if len(card):
-        card["verdict"] = [SG.verdict(hist, c, t) for c, t in zip(card["code"], card["tier"])]
-    res = (SG.figure(ev, spot, hist, day), SG.table(ev_all, hist), card)
+        okd = {r.code: bool(r.PASS) for r in wf[wf["position"] == position].itertuples()}
+        card["verdict"] = ["passed" if okd.get(c) else "no edge" for c in card["code"]]
+    res = (SG.figure_wf(ev, spot, wf, position, day, show_unproven), SG.wf_rows(wf, position, ev), card)
     while len(cache) >= 3:
         cache.pop(next(iter(cache)))
     cache[key] = res
     try:
-        rec.ui_state.setdefault("_sig_cards", {})[str(day)] = card.assign(day=str(day))
+        rec.ui_state.setdefault("_sig_cards", {})[str(day)] = card.assign(day=str(day), position=position, mode=mode)
     except Exception:                                            # noqa: BLE001
         pass
     return res
 
 
 # ── DT v2 (v0.17.0): tested defaults · follow arrows · GEX gate · initiation · scorecard ──────────────
-def _dt_v2(rec, exps, ts_ms):
+SENS = {"fewer": dict(alpha=0.50, floor=400.0, need=3, note="untested — fewer, stronger squares"),
+        "tested": dict(alpha=0.25, floor=200.0, need=2, note="the setting that held up out of sample (research/l24)"),
+        "more": dict(alpha=0.15, floor=100.0, need=1, note="untested — more, weaker squares")}
+
+
+def _dt_v2(rec, exps, ts_ms, ctl=None):
+    """v0.19 L37: ONE sensitivity slider; ± range from the control bar's strike window (top of the page)."""
     from core import dtv2 as V
     ss = st.session_state
-    st.caption("DT v2 — the settings that held up on 11 sessions out of sample (research/l24) · squares: adaptive band = "
-               "max(floor, α × strike's own last-30-min volume) · ▲▼ follow = ≥ N net strikes the same colour within 3 min "
-               "(bright when dealer GEX > 0, grey = stand aside: in −GEX following lost) · ● initiation = 10-min net flow "
-               "≥ 5 % of volume and price ≥ 4 pts the same way → follow · from 09:30, first signal 09:40, 10-min cooldown "
-               "between signals · scorecard = what SPX did 10 / 20 / 30 min later. Small edges, verify live before trading.")
-    c = st.columns(6)
-    alpha = c[0].slider("α · band = α × own 30-min vol", 0.10, 1.0, V.ALPHA, 0.05, key="dt2_alpha")
-    floor = c[1].slider("floor (contracts)", 50, 1000, int(V.FLOOR), 25, key="dt2_floor")
-    prox = c[2].slider("± % of spot", 0.1, 1.5, V.PROX, 0.05, key="dt2_prox")
-    watch = c[3].slider("watch strikes", 4, 30, V.WATCH, 1, key="dt2_watch")
-    cool = c[4].slider("per-strike cooldown (min)", 0, 30, V.COOLDOWN, 1, key="dt2_cool")
-    need = c[5].slider("follow: net strikes in 3 min", 1, 4, V.NEED, 1, key="dt2_need")
+    a_, b_ = st.columns([3, 1.1])
+    dmode = b_.segmented_control("DT tape", ["0DTE", "0+1DTE"], default="0DTE", key="dt2_mode", label_visibility="collapsed",
+                                 help="0DTE = squares from today's expiry (the tested setting) · 0+1DTE = today's and the next "
+                                      "expiry's flow summed per strike (untested)") or "0DTE"
+    sens = a_.select_slider("DT sensitivity", options=list(SENS), value="tested", key="dt2_sens",
+                            help="fewer ↔ more squares and arrows. 'tested' = α 0.25 · floor 200 · follow ≥ 2 strikes "
+                                 "(held up on 11 sessions); the ends are untested.")
+    cfg = SENS[sens or "tested"]
+    spot_now, _ = rec.spot_now()
+    if ctl and spot_now == spot_now:
+        prox = float(ctl["pct"]) if ctl.get("mode") == "% move" else float(ctl.get("n", 20)) * 5.0 / spot_now * 100.0
+    else:
+        prox = V.PROX
+    prox = float(np.clip(prox, 0.05, 5.0))
+    with st.expander("advanced (fixed at the tested values)", expanded=False):
+        watch = st.slider("watch strikes", 4, 30, V.WATCH, 1, key="dt2_watch")
+        cool = st.slider("per-strike cooldown (min)", 0, 30, V.COOLDOWN, 1, key="dt2_cool")
+    alpha, floor, need = cfg["alpha"], cfg["floor"], cfg["need"]
+    st.caption(f"DT v2 · sensitivity **{sens}** ({cfg['note']}) · watch ±{prox:.2f} % of spot from the control bar's strike "
+               f"window (tested value was ±0.30 %) · squares = a strike's net paper crossing max(floor, α × its own 30-min "
+               "volume) · ▲▼ follow = ≥ N strikes the same colour within 3 min (grey when dealer GEX ≤ 0) · ● initiation · "
+               "scorecard = SPX 10 / 20 / 30 min later. Treat as context — no proven edge.")
     try:
-        res = build_dt2(rec, exps, ts_ms, alpha, float(floor), prox, int(watch), int(cool), int(need))
+        res = build_dt2(rec, exps, ts_ms, alpha, float(floor), prox, int(watch), int(cool), int(need), dmode)
     except Exception as e:                                   # noqa: BLE001
         st.caption(f"⚠ DT v2 error: {type(e).__name__}: {e}")
         return
@@ -752,7 +803,7 @@ def _dt_v2(rec, exps, ts_ms):
     st.caption(note)
 
 
-def build_dt2(rec, exps, ts_ms, alpha, floor, prox, watch, cool, need):
+def build_dt2(rec, exps, ts_ms, alpha, floor, prox, watch, cool, need, mode="0DTE"):
     from core import dtv2 as V
     from core import session as S
     from core import spikes as SP
@@ -761,13 +812,16 @@ def build_dt2(rec, exps, ts_ms, alpha, floor, prox, watch, cool, need):
     day = D.session_date(rec)
     spot_now, _ = rec.spot_now()
     LD.stage("DT v2 · minute flow", 0.3)
-    p = IV.prep_prints(rec.prints_df(e0), rec.greeks, spot_now)
+    use = R3.ridge_exps(rec, e0, "0+1DTE") if mode == "0+1DTE" else [e0]        # v0.19.1 L41
+    ps_ = [IV.prep_prints(rec.prints_df(e_), rec.greeks, spot_now) for e_ in use]
+    ps_ = [q for q in ps_ if len(q)]
+    p = pd.concat(ps_, ignore_index=True) if len(ps_) > 1 else (ps_[0] if ps_ else IV.prep_prints(rec.prints_df(e0), rec.greeks, spot_now))
     if ts_ms and len(p):
         p = p[p["ts_ms"] <= ts_ms]
     if len(p):
         p = p[S.mask(p["ts"], day)]
-    c1 = R3.candles_for(rec, e0, day)
-    f5 = R3.fill5(rec, e0, day, p, c1)
+    c1 = R3.candles_for(rec, use, day)
+    f5 = R3.fill5(rec, use, day, p, c1)
     if f5 is not None:
         c1 = f5 if c1 is None else pd.concat([c1[["m", "sym", "strike", "cp", "size", "prem", "net"]], f5], ignore_index=True)
     mt = R3.merge_candles(SP.minute_table(p) if len(p) else pd.DataFrame(columns=["m", "sym", "strike", "cp", "size", "prem", "net"]), c1)
@@ -806,7 +860,7 @@ def build_dt2(rec, exps, ts_ms, alpha, floor, prox, watch, cool, need):
         pass
     png = B.fig_png(_dt2_figure(sq, fo, ini, gex, spot, minutes, day, prox))
     sq_h = len(sq) / max(len(minutes) / 60.0, 1 / 60)
-    note = (f"{e0} · {len(sq)} squares ({sq_h:.0f}/h) · α {alpha:.2f} · floor {int(floor)} · ±{prox:.2f}% · watch {watch} · "
+    note = (f"{' + '.join(use)} · {len(sq)} squares ({sq_h:.0f}/h) · α {alpha:.2f} · floor {int(floor)} · ±{prox:.2f}% · watch {watch} · "
             f"cooldown {cool} min · follow needs {need} · GEX now "
             + (f"{'+' if gex.iloc[-1] > 0 else '−'}${abs(gex.iloc[-1]) / 1e9:.1f}B" if len(gex) and gex.iloc[-1] == gex.iloc[-1] else "—")
             + " · research: follow +1.8 / +2.7 pts per signal at 20 min (weeks 6–13 / 14–20 Oct), initiation +1.1 / +2.6")

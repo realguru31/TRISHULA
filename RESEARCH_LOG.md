@@ -101,3 +101,16 @@ NEXT: rerun l29.py UNCHANGED (+ S7) when ~25–30 fresh days exist. Data: weekly
    scratchpad l19k/proto.py worked on 20 Oct; recorder 1-min candles would need imp_vol stored.
 ❓ Chain-wide "lean" gauge: averaging the whole chain washed the 21 Oct signal out; z-scores missed the constant call
    selling. Not pursued.
+
+
+## 8. 25 Oct — L34 (Tetris warm block = reversal) and L35 (walk-forward thresholds)
+❌ L34 (research/l34, pre-registered): the warm Tetris A/E blocks at highs/lows (user circles 23 Oct) come from scaling each
+   strike to the DAY's peak — a strike peaks when price comes closest to it, i.e. at the turn, known only afterwards.
+   Causal version (peak so far): almost no warm blocks; 12 days with OI → 1 event (lost). Not tradeable live.
+🟡 L35 (research/l35, pre-registered walk-forward, 22 days, 4 folds × 3 test days): only S6 exhaustion + breadth "middle"
+   passed (+2.74 / t 2.05 / 3 of 4 blocks; setting 8-pt move, ≥ 7 unusual strikes); S1 +0.7 in 4/4 blocks but t 1.2–1.4;
+   S7 negative; S3/S4/S5 ≈ 0. One pass in 18 is what luck gives → keep collecting days, rerun unchanged at ~40 days.
+
+🟡 L35 rerun per mode (25 Oct, all 22 days with 1DTE): 0DTE → S6 "middle" passes (+2.74 / t 2.05 / 3 of 4); 0+1DTE → S6
+   "more" passes (+2.70 / t 2.66 / 4 of 4, setting 8-pt move ≥ 3 unusual strikes). S6 positive in all 6 position × mode
+   runs → the most consistent candidate. Still 36 tests in total → keep collecting; rerun unchanged at ~40 days.

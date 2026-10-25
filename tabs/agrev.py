@@ -245,31 +245,36 @@ def _dash(rec, exp, legs, cfg, ridge):
     st.markdown("**Tetris** — where each strike's options matter most through the session (AG-style blocks)")
     LD.stage("Tetris", 0.80)
     tt = st.columns([1.5, 1.1, 1.3, 0.9, 1.1])
-    v4mode = tt[0].segmented_control("Tetris view", ["G · grid γ", "A · γ", "E · vega", "flow surface", "2-D"], default="G · grid γ",
-                                     key="ag_tt_mode", label_visibility="collapsed",
-                                     help="G (default, v0.18) = PRICE GRID: for every price level, the gamma all open positions "
-                                          "(0DTE→Friday, OI + traded) would carry if SPX stood there, live IV, each time column "
-                                          "scaled to its peak — best match to AG's 21 Oct chart (research/l25). "
-                                          "A = OI × gamma, E = OI × vega per strike, each strike scaled to its own peak (16 Oct). "
-                                          "'flow surface' / '2-D heatmap' = the earlier cumulative-flow views.")
-    pal = tt[1].segmented_control("palette", ["AG", "readable"], default="AG", key="ag_tt_pal", label_visibility="collapsed",
-                                  help="AG = band edges matched to AG's colour shares (warm = rare extremes); readable = equal bands")
+    v4mode = tt[0].segmented_control("Tetris view", ["A · γ", "E · vega", "flow surface", "2-D"], default="A · γ",
+                                     key="ag_tt_mode2", label_visibility="collapsed",
+                                     help="A (default) = open interest × gamma, E = open interest × vega; each strike scaled to its "
+                                          "own peak SO FAR (v0.19: a drawn column never changes colour). 'flow surface' / '2-D' "
+                                          "= the earlier cumulative-flow views. (G · price grid removed 24 Oct: flat bands.)")
+    pal = "AG"                                                    # v0.19: readable palette removed
     ov_opts = (["OI only (fixed at open)", "+ traded since 20:15 (overnight)", "+ traded since 09:30"] if S.gth()
                else ["OI only (fixed at open)", "+ traded since 09:30"])        # GTH off: the open IS 09:30
     if ss.get("ag_tt_ovl") not in ov_opts:
         ss.pop("ag_tt_ovl", None)
-    if "ag_tt_ovl" not in ss and S.gth():
-        ss["ag_tt_ovl"] = "+ traded since 20:15 (overnight)"          # G's research setting
     ovl = tt[2].selectbox("overlay", ov_opts,
                           key="ag_tt_ovl", label_visibility="collapsed",
                           help="weight = prior-close open interest, optionally plus contracts traded since 20:15 ET the evening before "
                                "(overnight session, GTH on) or since the 09:30 regular open")
+    scl = tt[1].segmented_control("scale", ["no repaint", "hindsight"], default="no repaint", key="ag_tt_scale",
+                                  label_visibility="collapsed",
+                                  help="no repaint (default) = each strike scaled to its peak SO FAR: a drawn column never changes. "
+                                       "hindsight = scaled to the DAY's peak (the v0.18 look): uses the future, repaints — the warm "
+                                       "blocks at highs/lows only appear after the fact (L34, 25 Oct).")
+    tt_ex = tt[4].segmented_control("Tetris expiries", ["0DTE", "0+1DTE"], default="0DTE", key="ag_tt_exp",
+                                    label_visibility="collapsed",
+                                    help="0DTE = the selected expiry (how A/E were matched to AG's 16 Oct chart) · 0+1DTE = "
+                                         "also the next expiry, summed per strike, each with its own time to expiry")
     smo = tt[3].select_slider("smooth", [0, 1, 2, 3], value=0, key="ag_tt_smooth", format_func=lambda v: f"smooth {v * 5}pt" if v else "no smooth",
                               label_visibility="collapsed")
-    if v4mode in ("G · grid γ", "A · γ", "E · vega", None):
+    if v4mode in ("A · γ", "E · vega", None):
         try:
             res = R3.tetris_build(rec, exp, day, asof, ks, bars, mt,
-                                  {"E · vega": "E", "A · γ": "A"}.get(v4mode, "G"), pal or "AG", ovl, smo)
+                                  {"E · vega": "E"}.get(v4mode, "A"), pal or "AG", ovl, smo, causal=(scl != "hindsight"),
+                                  exps=R3.ridge_exps(rec, exp, "0+1DTE") if tt_ex == "0+1DTE" else [exp])
         except Exception as e:                                     # noqa: BLE001
             res = None
             st.caption(f"⚠ tetris error: {type(e).__name__}: {e}")
@@ -280,10 +285,7 @@ def _dash(rec, exp, legs, cfg, ridge):
             b4.plotly_chart(fig2, width="stretch", key="ag_tt2", config={"displayModeBar": False})
             b4.markdown(legend, unsafe_allow_html=True)
             b4.caption(f"OI coverage {exp}: {rec.status().get('oi_0dte_legs', '?')} contracts · "
-                       + ("G: colour = gamma at that PRICE as a share of the peak at that moment (price grid, 0DTE→Fri, "
-                          "live IV) — best match to AG's 21 Oct chart (0.68 vs model A −0.04). "
-                          if v4mode in ("G · grid γ", None) else
-                          "Height and colour = this strike's weight × greek as a share of its own peak in the window. ")
+                       + "Height and colour = this strike's weight × greek as a share of its own peak SO FAR (no repaint). "
                        + "Reverse-engineered from AG's screenshots — a visual match, not his confirmed formula.")
     elif v4mode == "flow surface":
         g, proj = _heat_data(d, ch, spot, now, exp, day, int(cfg["StrikesEachSide"]))

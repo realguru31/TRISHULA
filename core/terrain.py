@@ -86,7 +86,7 @@ def _dealer_sign(c, signed=True):
 # ── the field ───────────────────────────────────────────────────────────
 def terrain_grid(chain, spot, exps, now, day, greek="Delta Change", vol_adj=0.0, field_mode=FIELD_MODES[0],
                  p_min=None, p_max=None, n_price=170, n_time=84, simulated_gamma=False,
-                 simulated_charm=False, weighting="OI + Volume", signed=False):
+                 simulated_charm=False, weighting="OI + Volume", signed=False, taus_override=None):
     """Field Z(price,time) for the chosen greek over ALL expiries in `exps`, on the
     09:30–16:00 axis of `day`. Leg sign: naive calls+/puts−, or dealer dsign when signed."""
     if p_min is None:
@@ -96,7 +96,8 @@ def terrain_grid(chain, spot, exps, now, day, greek="Delta Change", vol_adj=0.0,
     pg = np.linspace(p_min, p_max, n_price)
     from . import session as S
     open_ = S.open_dt(day); close = S.close_dt(day)
-    taus = [open_ + dt.timedelta(seconds=s) for s in np.linspace(0, (close - open_).total_seconds(), n_time)]
+    taus = ([pd_ts for pd_ts in taus_override] if taus_override is not None else
+            [open_ + dt.timedelta(seconds=s) for s in np.linspace(0, (close - open_).total_seconds(), n_time)])
     Z = np.zeros((n_price, n_time))
     book_now = 0.0
     for es in exps:
@@ -465,7 +466,15 @@ def style_time_axis(ax, x0, x1):
 
 
 # ── figures (vs3dgbt _render_terrain) ──────────────────────────────────
-def terrain_figures(ch, spot, exps, now, day, bars, o, cap_state, peak_pts=()):
+FROZEN_KEYS = ("greek", "weighting", "norm", "pct", "intensity", "power", "sat", "voladj", "simg", "simc", "fieldmode", "signed")
+
+
+def frozen_sig(o: dict) -> str:
+    """Options that change the field's values/colours (display-only options excluded)."""
+    return repr(sorted((k, o.get(k)) for k in FROZEN_KEYS))
+
+
+def terrain_figures(ch, spot, exps, now, day, bars, o, cap_state, peak_pts=(), frozen=None, backfill=None):
     """Build the main terrain figure (+ stacked charm figure).
     o = options dict (greek, weighting, norm, pct, intensity, power, alpha, sat, contours, pockets,
         nblob, strad, levels, voladj, simg, simc, charm2, fieldmode, signed, zoom, p_min, p_max).
@@ -510,8 +519,47 @@ def terrain_figures(ch, spot, exps, now, day, bars, o, cap_state, peak_pts=()):
     if not _in:
         notes.append(f"⏸ off-hours: field projected across the {day:%a %d %b} session from the current chain; "
                      "price appears live from the session open (GTH 20:15 ET when the 🌙 GTH toggle is on).")
+    # ── v0.19 L36: NO REPAINT. Columns left of "now" are FROZEN the first time they are behind now: values and colours as
+    # drawn at that minute (or, after a restart, recomputed from the chain snapshot RECORDED at that minute). Columns right
+    # of now are the projection from the current chain and are recomputed every frame (dimmed below).
+    x0_, x1_ = session_window(day)
+    nowx_ = mdates.date2num(now) if x0_ <= mdates.date2num(now) <= x1_ else (x1_ if mdates.date2num(now) > x1_ else x0_)
+    jnow = int(np.clip(round((nowx_ - x0_) / (x1_ - x0_) * (Z.shape[1] - 1)), 0, Z.shape[1] - 1))
+    if mdates.date2num(now) > x1_:
+        jnow = Z.shape[1]
+    Vi = terrain_intensity(V, o["intensity"], power=o["power"], gain=3.0)
+    n_new = n_back = 0
+    if frozen is not None:
+        for j in range(min(jnow, Z.shape[1])):
+            if j not in frozen:
+                col = None
+                if backfill is not None and t_greek != GDECAY:
+                    try:
+                        r = backfill(taus[j])
+                        if r is not None:
+                            ch_j, spot_j, now_j = r
+                            kw_j = dict(kw); kw_j["p_min"], kw_j["p_max"] = pg[0], pg[-1]
+                            _, Zj, _ = terrain_grid(ch_j, spot_j, exps, now_j, day, n_price=len(pg),
+                                                    taus_override=[taus[j]], **kw_j)
+                            zc = np.abs(Zj[:, 0]) if t_greek == GHEAVY else Zj[:, 0]
+                            vc = np.clip(zc / (used_cap or 1.0), -1, 1)
+                            col = (pg.copy(), zc, terrain_intensity(vc, o["intensity"], power=o["power"], gain=3.0), vc)
+                            n_back += 1
+                    except Exception:                    # noqa: BLE001
+                        col = None
+                if col is None:
+                    col = (pg.copy(), Z[:, j].copy(), Vi[:, j].copy(), V[:, j].copy())
+                    n_new += 1
+                frozen[j] = col
+            fpg, zc, vic, vc = frozen[j]
+            Z[:, j] = np.interp(pg, fpg, zc)
+            Vi[:, j] = np.interp(pg, fpg, vic)
+            V[:, j] = np.interp(pg, fpg, vc)
+        if n_back:
+            notes.append(f"🧊 {n_back} past column(s) rebuilt from the chain snapshots recorded at their minute")
+    jnow_f = jnow
     Vn_rings = V.copy()
-    V = terrain_intensity(V, o["intensity"], power=o["power"], gain=3.0)
+    V = Vi
     cmap = (charm_cmap() if t_greek == "Charm" else heat_cmap() if t_greek == GHEAVY
             else decay_cmap() if t_greek == GDECAY else gex_cmap())
     plotV = (-V if t_greek == "Charm" else V)
@@ -530,7 +578,11 @@ def terrain_figures(ch, spot, exps, now, day, bars, o, cap_state, peak_pts=()):
     draw_candles(ax, bars, x0, x1, pg[0], pg[-1])
     ax.axhline(spot, color=WHITE, ls="--", lw=1.0, alpha=.9, zorder=7)
     nowx = mdates.date2num(now) if x0 <= mdates.date2num(now) <= x1 else x0
-    ax.axvline(nowx, color="#3399dd", ls=":", lw=1.1, zorder=7)
+    ax.axvline(nowx, color="#3399dd", ls=(0, (4, 2)), lw=1.4, zorder=7)
+    if frozen is not None and nowx < x1:                 # v0.19: projection right of now, recomputed every frame — dimmed
+        ax.axvspan(nowx, x1, color=DARK, alpha=0.38, zorder=2, lw=0)
+        ax.text(nowx, pg[-1], " projection →", color="#9fb0c3", fontsize=8, va="top", ha="left", zorder=9)
+        ax.text(nowx, pg[-1], "← frozen past ", color="#9fb0c3", fontsize=8, va="top", ha="right", zorder=9)
     ch0 = ch[ch["exp"] == exps[0]]
     strad = terrain_straddle(ch0, spot)
     if o["strad"] and strad:
@@ -628,6 +680,13 @@ def terrain_figures(ch, spot, exps, now, day, bars, o, cap_state, peak_pts=()):
                 Vc, c_cap = terrain_scale(Zc, t_norm, cap_state[ck], o["pct"])
             cap_state.setdefault(f"terr_hist_Charm_{t_wt}", []).append(float(np.percentile(np.abs(Zc), 92)))
             Vc = terrain_intensity(Vc, o["intensity"], power=o["power"], gain=3.0)
+            if frozen is not None:                        # v0.19: charm panel frozen the same way (first sight)
+                fz = frozen.setdefault("_charm", {})
+                for j in range(min(jnow_f, Zc.shape[1])):
+                    if j not in fz:
+                        fz[j] = (pg.copy(), Zc[:, j].copy(), Vc[:, j].copy())
+                    fpg, zc, vc = fz[j]
+                    Zc[:, j] = np.interp(pg, fpg, zc); Vc[:, j] = np.interp(pg, fpg, vc)
             fc = plt.figure(figsize=(16.5, 4.4), dpi=80, facecolor=DARK)
             axc = fc.add_subplot(111); axc.set_facecolor(DARK)
             axc.imshow(-Vc, origin="lower", extent=[x0, x1, pg[0], pg[-1]], aspect="auto",
@@ -640,7 +699,9 @@ def terrain_figures(ch, spot, exps, now, day, bars, o, cap_state, peak_pts=()):
                     pass
             draw_candles(axc, bars, x0, x1, pg[0], pg[-1])
             axc.axhline(spot, color=WHITE, ls="--", lw=1.0, alpha=.9, zorder=7)
-            axc.axvline(nowx, color="#3399dd", ls=":", lw=1.1, zorder=7)
+            axc.axvline(nowx, color="#3399dd", ls=(0, (4, 2)), lw=1.4, zorder=7)
+            if frozen is not None and nowx < x1:
+                axc.axvspan(nowx, x1, color=DARK, alpha=0.38, zorder=2, lw=0)
             for _y in _yt:
                 axc.axhline(_y, color="#1a2330", lw=0.6, zorder=1)
             axc.set_yticks(_yt); axc.tick_params(axis="y", colors="#9fb0c3", labelsize=10.5, length=3)

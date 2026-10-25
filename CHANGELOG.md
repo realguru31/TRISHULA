@@ -3,6 +3,42 @@
 Semantic versioning: MAJOR.MINOR.PATCH. The running version is shown in the app's
 status bar, every tab footer, and the Recorder diagnostics panel.
 
+## v0.19.1 — 2026-10-25 · 0DTE / 0+1DTE toggle everywhere (L41)
+- **Tetris A/E:** "0DTE / 0+1DTE" switch — 0+1DTE sums both expiries per strike, each leg with its own time to expiry;
+  no-repaint rules unchanged. Default 0DTE (how A/E were matched to AG).
+- **Signals:** "tape" switch — every signal on 0DTE only, or every signal on 0DTE + 1DTE. Each mode has its OWN
+  walk-forward record (research/l35, 22 days, all with 1DTE now — the 6–20 Oct 1DTE candles were in the OI pull):
+  · 0DTE: S6 exhaustion + breadth "middle" passes (+2.74 pts at 20 min vs random, t 2.05, 3/4 blocks)
+  · 0+1DTE: S6 "more" passes (+2.70, t 2.66, **4/4** test blocks, ~8.8 marks/day) — the strongest result so far
+  · S6 is positive in every position in both modes; S1 small positive; S7 ≈ 0 with 1DTE, negative 0DTE-only
+- **DT v2:** "DT tape" switch (0+1DTE untested).
+
+## v0.19.0 — 2026-10-25 · no-repaint maps, one-slider Signals (walk-forward), simpler DT, status badge
+- **Tetris (L33/L36):** opens on **A**; G and the "readable" palette removed. New **scale** switch: **no repaint**
+  (default) = each strike scaled to its peak SO FAR, colour bands from the values so far (mid-rank, so ties at a
+  strike's running peak band correctly), a FIXED strike set for the session (±200 pts around its first price, display
+  cropped), and IV / OI per bucket from the RECORDED chain snapshots → a drawn column never changes. **hindsight** =
+  the v0.18 look (scaled to the day's peak, repaints) with a warning in the title.
+  L34 finding (research/l34): the warm blocks at highs/lows in the old view are HINDSIGHT — a strike hits its day peak
+  when price comes closest to it. Causally (12 days with OI) there are almost no warm blocks: 1 event, lost → no edge.
+- **Terrain (L36):** columns left of "now" are FROZEN the first time they fall behind now (values and colours as drawn;
+  after a restart rebuilt from the chain snapshot recorded at that minute, ≤ 10 min old); right of "now" = projection
+  from the current chain, recomputed every frame and dimmed, dashed "now" line with "← frozen past · projection →".
+  Same for the charm panel. Shared by every viewer for the day + field settings. Test: past identical after a large
+  chain change, future changes. Book and GEX³ unchanged (by design).
+- **Signals (L35/L35b):** ONE "Signal sensitivity" slider (fewer / middle / more) + "show unproven" toggle. Each position
+  uses the thresholds a WALK-FORWARD test picked (research/l35, 22 sessions: chosen on earlier days, scored only on the
+  next 3, rolled 4 times, 12 test days). Result: only **S6 exhaustion + breadth at "middle"** passed (+2.74 pts at 20 min
+  vs random, t 2.05, 3/4 test blocks, ~5.5 marks/day) — with 18 tests one pass is expected by luck, so "worth watching".
+  S1 positive in all 4 test blocks but small (t 1.2–1.4); S7 quiet big block NEGATIVE; S3/S4/S5 ≈ 0. Unproven marks are
+  hidden by default. Table = each signal's out-of-sample record at the chosen sensitivity.
+- **DT v2 (L37):** one "DT sensitivity" slider (fewer / tested / more); ± range comes from the control bar's strike
+  window; watch strikes / cooldown in an "advanced" expander.
+- **Player bar (L38/L39):** "⟳" refresh-now button next to "refresh N min"; badge 🟢 LIVE · RTH / ⚪ LIVE · GTH /
+  🔴 CLOSED (weekends, holidays, 16:00–20:15) instead of an always-red LIVE.
+- **Contract pane (L40):** axis titles "7650C price $" (left, blue) / "7650P price $" (right, orange), legend,
+  "contracts / min" on the volume bars, each "low" label on its own side, ridge axis titled "strike".
+
 ## v0.18.1 — 2026-10-22 · FIX: 1-minute option candles were thrown away (backfill + sweep showed 0/182, 0/116)
 - Root cause (live caption 22 Oct 03:05 + the Colab pull): dxfeed returns 1-minute candles under the symbol
   `…{=m}`, not `…{=1m}`. The recorder only kept events whose spec contained "=1m", so EVERY 1-minute option candle
