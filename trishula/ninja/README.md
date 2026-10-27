@@ -1,4 +1,4 @@
-# TrishulaSignals — NinjaTrader 8 indicator (v4)
+# TrishulaSignals — NinjaTrader 8 indicator (v5)
 Reads the TRISHULA feed and draws the Signals-view marks (S1, S3–S7) plus the VS3D Book (key levels, straddle band,
 dealer net-contracts profile) at ES prices on any chart (ES recommended).
 

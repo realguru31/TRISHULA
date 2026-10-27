@@ -3,6 +3,13 @@
 Semantic versioning: MAJOR.MINOR.PATCH. The running version is shown in the app's
 status bar, every tab footer, and the Recorder diagnostics panel.
 
+## v0.21.1 — 2026-10-27 · NinjaTrader indicator v5 (indicator only, app code unchanged)
+- Signal arrows sometimes missing after a reload (status line showed the marks, chart didn't): v4 drew them as drawing
+  objects from OnBarUpdate on a "new data" flag and remembered what it had drawn → timing-dependent. v5 PAINTS arrows,
+  labels and the status line in OnRender every repaint, like the Book — a mark in the feed that passes the filters is on
+  the chart every time, pinned to its bar and ES price. No drawing objects at all. New setting "Arrow size". Status line
+  shows "passed only" / "all". Compile-checked; filter tested on the 07:04 feed (More · 0+1DTE · passed only = 9 S6 marks).
+
 ## v0.21.0 — 2026-10-27 · Book levels + profile in the NinjaTrader feed
 - Feed gets a `book` section (0DTE, same logic as the VS3D Book): key levels UP TEST / DN TEST / BALANCE with
   state = PREVIEW (yesterday's book, before the 09:35 ET lock) or LOCKED (frozen for the session, `locked_at`), the

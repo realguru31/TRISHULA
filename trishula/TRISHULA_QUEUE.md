@@ -4,6 +4,7 @@ Deployed: **v0.17.0**. Nothing gets built until the user types **APPROVE**. Depl
 Rules unchanged: whole zip every time (delete trishula/ → unzip → commit → Reboot app) · version on screen + CHANGELOG ·
 secrets only in Streamlit · one repo, no GitHub tokens · Colab scripts outside the repo, both tokens prefilled.
 
+## IDEAS (user 27 Oct, not queued for build): Book 0+1DTE experiment (Book is 0DTE only today, feed too) · profile numbers overlap candles → inside bars or top-8 only
 ## ✅ BUILT v0.21.0 (APPROVE 27 Oct 06:36 ET): Book levels + profile in the NinjaTrader feed ("book" section, 0DTE, SPX + ES) · indicator v4 paints them in OnRender — levels dashed = PREVIEW (before 09:35) / solid = LOCKED, dotted straddle band, dealer net-contracts profile on the right edge · compile-checked (mcs + stubs) · parser tested on a real feed file
 ## ✅ v0.20.1–v0.20.3 (27 Oct): theme restored · overnight (GTH) marks in feed · indicator draws only in OnBarUpdate, no chart reload, pixel labels · feed append-only lock (marks ≥3 min old are final)
 ## ✅ BUILT v0.20.0 (APPROVE 27 Oct 05:39 ET): password gate · NinjaTrader feed (signals only, ES levels by ratio) · ninja/TrishulaSignals.cs — compile untested (no NT here)

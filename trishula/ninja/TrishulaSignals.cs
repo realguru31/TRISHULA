@@ -16,7 +16,8 @@ using NinjaTrader.Gui.Tools;
 using NinjaTrader.NinjaScript.DrawingTools;
 #endregion
 
-// TRISHULA signals + Book for NinjaTrader 8 (v4, 27 Oct 2026).
+// TRISHULA signals + Book for NinjaTrader 8 (v5, 27 Oct 2026).
+// v5: signal arrows + labels + status are painted in OnRender too (v4 drawing objects went missing after some reloads).
 // v4: also draws the VS3D Book at ES prices — key levels (UP TEST / DN TEST / BALANCE: dashed = PREVIEW before the
 // 09:35 ET lock, solid = LOCKED), the straddle band, and the dealer net-contracts profile per strike on the right edge.
 // The Book is painted in OnRender (no drawing objects, no chart reload).
@@ -57,9 +58,7 @@ namespace NinjaTrader.NinjaScript.Indicators
         private volatile List<Mark> latest = new List<Mark>();
         private volatile string feedGenerated = "", feedStatus = "", feedNote = "", lastError = "";
         private DateTime lastFetchLocal = DateTime.MinValue;
-        private readonly HashSet<string> drawn = new HashSet<string>();
         private int busy;
-        private volatile bool dirty;
         private static readonly TimeZoneInfo EasternTz = FindEastern();
 
         private static TimeZoneInfo FindEastern()
@@ -74,7 +73,7 @@ namespace NinjaTrader.NinjaScript.Indicators
             {
                 Description = "TRISHULA Signals-view marks from the TRISHULA JSON feed (read-only).";
                 Name = "TrishulaSignals";
-                Calculate = Calculate.OnPriceChange;          // drawing happens in OnBarUpdate on the next price change
+                Calculate = Calculate.OnPriceChange;          // repaints on every price change → the feed shows up on the next tick
                 IsOverlay = true;
                 DisplayInDataBox = false;
                 DrawOnPricePanel = true;
@@ -92,6 +91,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                 PlaceAtEsLevel = true;
                 OffsetTicks = 4;
                 LabelPixels = 16;
+                ArrowSize = 14;
                 BullBrush = Brushes.LimeGreen;
                 BearBrush = Brushes.HotPink;
                 UnprovenBrush = Brushes.Gray;
@@ -130,12 +130,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 
         protected override void OnBarUpdate()
         {
-            // v3: draw ONLY here, on NinjaTrader's own bar thread, and only when the feed brought something new.
-            // (v1/v2 drew from a timer via TriggerCustomEvent + ForceRefresh, which repainted / reloaded the chart.)
-            if (CurrentBar < Count - 2) return;              // skip the historical replay, act on the live edge only
-            if (!dirty) return;
-            dirty = false;
-            Redraw();
+            // v5: nothing here — everything is painted in OnRender
         }
 
         // ── background: download + parse ─────────────────────────────────────────────────────────
@@ -167,7 +162,6 @@ namespace NinjaTrader.NinjaScript.Indicators
             {
                 Interlocked.Exchange(ref busy, 0);
             }
-            dirty = true;                                    // OnBarUpdate picks it up on the next price change
         }
 
         private static string Str(string json, string key)
@@ -281,67 +275,64 @@ namespace NinjaTrader.NinjaScript.Indicators
             catch { return et; }
         }
 
-        private string lastSig = "";
-
-        private void Redraw()
+        // v5: marks + status are PAINTED in OnRender every repaint (no drawing objects, no "already drawn" memory) —
+        // if a mark is in the feed and passes the filters it is on the chart, every time, pinned to its bar and price.
+        private string StatusText()
         {
-            if (Bars == null || Bars.Count == 0) return;
-            // v2: do NOTHING unless the feed or a setting actually changed — no redraw, no chart refresh every poll
-            string sig = feedGenerated + "|" + (book == null ? "-" : book.State) + "|" + latest.Count + "|" + lastError + "|" + Sensitivity + Tape + OnlyPassed + IncludeOvernight
-                         + ShowS1 + ShowS3 + ShowS4 + ShowS5 + ShowS6 + ShowS7 + PlaceAtEsLevel + OffsetTicks + LabelPixels + "|" + Bars.Count;
-            if (sig == lastSig) return;
-            lastSig = sig;
-            var keep = new HashSet<string>();
-            foreach (var m in latest)
+            string age = "";
+            DateTimeOffset g;
+            if (DateTimeOffset.TryParse(feedGenerated, CultureInfo.InvariantCulture, DateTimeStyles.None, out g))
             {
-                if (!Wanted(m)) continue;
-                DateTime t = ToChartTime(m.TimeEt).AddMinutes(1);   // the signal is known at the END of its minute
-                int idx = Bars.GetBar(t);
-                if (idx < 0 || idx >= Bars.Count) continue;
-                DateTime barTime = Bars.GetTime(idx);
-                bool up = m.Dir > 0;
-                double off = OffsetTicks * TickSize;
-                double y;
-                if (PlaceAtEsLevel && !double.IsNaN(m.Es))
-                    y = up ? m.Es - off : m.Es + off;
-                else
-                    y = up ? Bars.GetLow(idx) - off : Bars.GetHigh(idx) + off;
-                bool overnight = m.Session == "GTH";
-                bool solid = overnight ? m.RthPassed : m.Passed;
-                Brush br = !solid ? UnprovenBrush : overnight ? (up ? OvernightBullBrush : OvernightBearBrush) : (up ? BullBrush : BearBrush);
-                string tag = "TRI_" + m.Id;
-                keep.Add(tag);
-                keep.Add(tag + "_t");
-                if (drawn.Contains(tag)) continue;               // already on the chart — never re-create it
-                if (up) Draw.ArrowUp(this, tag, false, barTime, y, br);
-                else Draw.ArrowDown(this, tag, false, barTime, y, br);
-                // label glued to the arrow: same price, a fixed PIXEL offset — it no longer flies away as Offset (ticks) grows
-                Draw.Text(this, tag + "_t", false, overnight ? m.Code + " ON" : m.Code, barTime, y, up ? -LabelPixels : LabelPixels, br,
-                          new SimpleFont("Arial", 9), System.Windows.TextAlignment.Center, Brushes.Transparent, Brushes.Transparent, 0);
+                double mins = (DateTimeOffset.Now - g).TotalMinutes;
+                age = mins > 3 && feedStatus == "live" ? "  ⚠ STALE " + mins.ToString("0") + " min" : "";
             }
-            foreach (var old in drawn.Where(x => !keep.Contains(x)).ToList())
-                RemoveDrawObject(old);
-            drawn.Clear();
-            foreach (var k in keep) drawn.Add(k);
+            var last = latest.Where(Wanted).OrderBy(x => x.TimeEt).LastOrDefault();
+            return "TRISHULA · " + (IncludeOvernight ? "RTH+ON · " : "RTH · ") + Sensitivity + " · " + (Tape == TrishulaTape.ZeroDTE ? "0DTE" : "0+1DTE")
+                   + (OnlyPassed ? " · passed only" : " · all") + " · feed " + (feedStatus == "" ? "—" : feedStatus) + " "
+                   + (feedGenerated.Length >= 19 ? feedGenerated.Substring(11, 8) : "") + " ET" + age
+                   + BookStatus()
+                   + (lastError != "" ? "\nERROR: " + lastError : "")
+                   + (feedNote != "" ? "\n" + feedNote : "")
+                   + (last != null ? "\nlast: " + last.Code + " " + (last.Dir > 0 ? "▲" : "▼") + " " + last.TimeEt.ToString("HH:mm") + " ET"
+                                     + (double.IsNaN(last.Es) ? "" : " · ES " + last.Es.ToString("0.00")) : "");
+        }
 
-            if (ShowStatusText)
+        private void RenderMarks(ChartControl chartControl, ChartScale chartScale, float top, float bottom)
+        {
+            if (Bars == null || Bars.Count == 0 || ChartBars == null) return;
+            int from = Math.Max(0, ChartBars.FromIndex), to = Math.Min(Bars.Count - 1, ChartBars.ToIndex);
+            using (var af = new SharpDX.DirectWrite.TextFormat(Core.Globals.DirectWriteFactory, "Arial", (float)ArrowSize))
+            using (var lf = new SharpDX.DirectWrite.TextFormat(Core.Globals.DirectWriteFactory, "Arial", 9f))
             {
-                string age = "";
-                DateTimeOffset g;
-                if (DateTimeOffset.TryParse(feedGenerated, CultureInfo.InvariantCulture, DateTimeStyles.None, out g))
+                af.TextAlignment = SharpDX.DirectWrite.TextAlignment.Center;
+                af.ParagraphAlignment = SharpDX.DirectWrite.ParagraphAlignment.Center;
+                af.WordWrapping = SharpDX.DirectWrite.WordWrapping.NoWrap;
+                lf.TextAlignment = SharpDX.DirectWrite.TextAlignment.Center;
+                lf.ParagraphAlignment = SharpDX.DirectWrite.ParagraphAlignment.Center;
+                lf.WordWrapping = SharpDX.DirectWrite.WordWrapping.NoWrap;
+                foreach (var m in latest)
                 {
-                    double mins = (DateTimeOffset.Now - g).TotalMinutes;
-                    age = mins > 3 && feedStatus == "live" ? "  ⚠ STALE " + mins.ToString("0") + " min" : "";
+                    if (!Wanted(m)) continue;
+                    int idx = Bars.GetBar(ToChartTime(m.TimeEt).AddMinutes(1));   // known at the END of its minute
+                    if (idx < from || idx > to) continue;
+                    bool up = m.Dir > 0;
+                    double off = OffsetTicks * TickSize;
+                    double price = PlaceAtEsLevel && !double.IsNaN(m.Es) ? (up ? m.Es - off : m.Es + off)
+                                                                         : (up ? Bars.GetLow(idx) - off : Bars.GetHigh(idx) + off);
+                    float x = chartControl.GetXByBarIndex(ChartBars, idx);
+                    float y = chartScale.GetYByValue(price);
+                    if (y < top - 40 || y > bottom + 40) continue;
+                    bool overnight = m.Session == "GTH";
+                    bool solid = overnight ? m.RthPassed : m.Passed;
+                    Brush b = !solid ? UnprovenBrush : overnight ? (up ? OvernightBullBrush : OvernightBearBrush) : (up ? BullBrush : BearBrush);
+                    float a = ArrowSize;
+                    using (var br = Dx(b, 1f))
+                    {
+                        RenderTarget.DrawText(up ? "▲" : "▼", af, new SharpDX.RectangleF(x - a, y - a, 2 * a, 2 * a), br);
+                        float ly = up ? y + LabelPixels : y - LabelPixels;     // label below an up arrow, above a down arrow
+                        RenderTarget.DrawText(overnight ? m.Code + " ON" : m.Code, lf, new SharpDX.RectangleF(x - 30, ly - 7, 60, 14), br);
+                    }
                 }
-                var last = latest.Where(Wanted).OrderBy(x => x.TimeEt).LastOrDefault();
-                string txt = "TRISHULA · " + (IncludeOvernight ? "RTH+ON · " : "RTH · ") + Sensitivity + " · " + (Tape == TrishulaTape.ZeroDTE ? "0DTE" : "0+1DTE")
-                             + " · feed " + (feedStatus == "" ? "—" : feedStatus) + " " + (feedGenerated.Length >= 19 ? feedGenerated.Substring(11, 8) : "") + " ET" + age
-                             + BookStatus()
-                             + (lastError != "" ? "\nERROR: " + lastError : "")
-                             + (feedNote != "" ? "\n" + feedNote : "")
-                             + (last != null ? "\nlast: " + last.Code + " " + (last.Dir > 0 ? "▲" : "▼") + " " + last.TimeEt.ToString("HH:mm") + " ET"
-                                               + (double.IsNaN(last.Es) ? "" : " · ES " + last.Es.ToString("0.00")) : "");
-                Draw.TextFixed(this, "TRI_status", txt, TextPosition.TopLeft);
             }
         }
 
@@ -367,10 +358,11 @@ namespace NinjaTrader.NinjaScript.Indicators
         {
             base.OnRender(chartControl, chartScale);
             var bk = book;
-            if (bk == null || RenderTarget == null || ChartPanel == null) return;
+            if (RenderTarget == null || ChartPanel == null) return;
             float left = ChartPanel.X, right = ChartPanel.X + ChartPanel.W, top = ChartPanel.Y, bottom = ChartPanel.Y + ChartPanel.H;
             var oldAa = RenderTarget.AntialiasMode;
             RenderTarget.AntialiasMode = SharpDX.Direct2D1.AntialiasMode.Aliased;
+            if (bk != null)
             using (var tf = new SharpDX.DirectWrite.TextFormat(Core.Globals.DirectWriteFactory, "Arial", 11f))
             using (var tfs = new SharpDX.DirectWrite.TextFormat(Core.Globals.DirectWriteFactory, "Arial", 9f))
             using (var dash = new SharpDX.Direct2D1.StrokeStyle(Core.Globals.D2DFactory,
@@ -437,6 +429,15 @@ namespace NinjaTrader.NinjaScript.Indicators
                     }
                 }
             }
+            RenderTarget.AntialiasMode = SharpDX.Direct2D1.AntialiasMode.PerPrimitive;
+            RenderMarks(chartControl, chartScale, top, bottom);
+            if (ShowStatusText)
+                using (var sf = new SharpDX.DirectWrite.TextFormat(Core.Globals.DirectWriteFactory, "Arial", 12f))
+                using (var sb = Dx(Brushes.Gainsboro, 1f))
+                {
+                    sf.WordWrapping = SharpDX.DirectWrite.WordWrapping.NoWrap;
+                    RenderTarget.DrawText(StatusText(), sf, new SharpDX.RectangleF(left + 8, top + 18, 900, 90), sb);
+                }
             RenderTarget.AntialiasMode = oldAa;
         }
 
@@ -487,6 +488,9 @@ namespace NinjaTrader.NinjaScript.Indicators
 
         [NinjaScriptProperty, Range(0, 100), Display(Name = "Label distance from arrow (pixels)", Order = 3, GroupName = "3. Display")]
         public int LabelPixels { get; set; }
+
+        [NinjaScriptProperty, Range(6, 40), Display(Name = "Arrow size", Order = 4, GroupName = "3. Display")]
+        public int ArrowSize { get; set; }
 
         [NinjaScriptProperty, Display(Name = "Status text", Order = 3, GroupName = "3. Display")]
         public bool ShowStatusText { get; set; }
