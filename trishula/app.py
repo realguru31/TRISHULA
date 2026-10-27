@@ -76,6 +76,40 @@ if missing:
 
 rec = get_recorder(VERSION)
 rec.start()          # restarts the thread if it ever died
+
+
+@st.cache_resource(show_spinner=False)
+def get_feed(version: str, key: str):
+    """v0.20.0: NinjaTrader signals feed (static/dtsignals_<SIGNALS_KEY>.json), one per app version."""
+    from core.feed import Feed
+    return Feed(rec, key).start()
+
+
+_fkey = str(st.secrets.get("SIGNALS_KEY", "") or "")
+feed = get_feed(VERSION, _fkey) if len(_fkey) >= 16 else None
+if feed is not None:
+    feed.start()
+
+
+def _password_gate():
+    """v0.20.0: app password from Streamlit secrets (APP_PASSWORD). The recorder and the feed keep running behind it."""
+    import hmac
+    pw = str(st.secrets.get("APP_PASSWORD", "") or "")
+    if not pw or st.session_state.get("_auth_ok"):
+        return
+    st.markdown("### 🔱 TRISHULA")
+    with st.form("login", clear_on_submit=True):
+        x = st.text_input("Password", type="password")
+        ok = st.form_submit_button("Enter")
+    if ok:
+        if hmac.compare_digest(x.encode(), pw.encode()):
+            st.session_state["_auth_ok"] = True
+            st.rerun()
+        st.error("Wrong password.")
+    st.stop()
+
+
+_password_gate()
 _stale = stale_recorders()
 if _stale:
     st.error(f"⚠ An older recorder is still running ({', '.join(_stale)}). "
@@ -188,6 +222,13 @@ def day_data():
 def diagnostics():
     with st.expander(f"Recorder diagnostics · {LABEL}"):
         st.json(rec.status())
+        if feed is not None:
+            st.caption(f"NinjaTrader feed: last write {feed.last_ok:%H:%M:%S} ET · {feed.n_marks} marks"
+                       if feed.last_ok else "NinjaTrader feed: not written yet")
+            if feed.last_err:
+                st.code(f"feed error: {feed.last_err}")
+        else:
+            st.caption("NinjaTrader feed OFF — add SIGNALS_KEY (≥ 16 characters) to Streamlit secrets")
         tm = rec.ui_state.get("_timings", {})
         if tm:
             st.caption("last run per tab: seconds · at · memory after (MB)")

@@ -3,6 +3,19 @@
 Semantic versioning: MAJOR.MINOR.PATCH. The running version is shown in the app's
 status bar, every tab footer, and the Recorder diagnostics panel.
 
+## v0.20.0 — 2026-10-27 · password + NinjaTrader signals feed
+- **Password:** the app asks for `APP_PASSWORD` (Streamlit secrets) before showing anything; wrong password → nothing.
+  The recorder and the feed keep running behind the login.
+- **Signals feed:** a background thread recomputes the Signals-view marks (S1, S3–S7; no DT v2 marks) every 60 s during
+  RTH for every sensitivity × tape and writes `static/dtsignals_<SIGNALS_KEY>.json`, served at
+  `https://trishula.streamlit.app/app/static/dtsignals_<SIGNALS_KEY>.json` (static files can't sit behind the app
+  password, so the long random key in the name is the protection). Each mark: time (ET), signal, direction, mode,
+  sensitivity, passed-the-test flag, SPX level and **ES level = SPX × ES/SPX of that minute** (ratio, rounded to the
+  0.25 tick). Status / last write in Recorder diagnostics; a `[feed]` line in the log each minute.
+- **NinjaTrader 8 indicator** `ninja/TrishulaSignals.cs` (+ README): polls the feed, draws ▲/▼ at the ES level (or bar
+  high/low), filters by sensitivity, tape, each signal, only-passed; status text with STALE warning.
+- `.streamlit/config.toml` (static serving) added.
+
 ## v0.19.3 — 2026-10-26 · crash hardening + TASTIER surfaces that survive a reboot (L45)
 - **Memory / crash (app died 26 Oct ~12:43 ET, no traceback, while a whole extra expiry — Wed 28 Oct — was being
   added):** a `[mem]` line in the Streamlit log every 5 min (memory, prints, 1-min candles, snapshots, legs, subscribed

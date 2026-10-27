@@ -4,6 +4,7 @@ Deployed: **v0.17.0**. Nothing gets built until the user types **APPROVE**. Depl
 Rules unchanged: whole zip every time (delete trishula/ → unzip → commit → Reboot app) · version on screen + CHANGELOG ·
 secrets only in Streamlit · one repo, no GitHub tokens · Colab scripts outside the repo, both tokens prefilled.
 
+## ✅ BUILT v0.20.0 (APPROVE 27 Oct 05:39 ET): password gate · NinjaTrader feed (signals only, ES levels by ratio) · ninja/TrishulaSignals.cs — compile untested (no NT here)
 ## ✅ BUILT v0.19.3 + L45 (APPROVE 26 Oct 15:46 ET) · trishula-v0.19.3.zip · after deploy: read the [mem] lines in the log
 - v0.19.3 memory / crash (app died ~12:43 ET 26 Oct, no traceback = platform kill; at that moment a whole extra expiry
   (Wed 28 Oct, 242 legs) was being subscribed + replayed): (1) memory line in the log every 5 min (rss, prints, c1m rows,
