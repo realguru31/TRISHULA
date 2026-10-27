@@ -3,6 +3,13 @@
 Semantic versioning: MAJOR.MINOR.PATCH. The running version is shown in the app's
 status bar, every tab footer, and the Recorder diagnostics panel.
 
+## v0.20.3 — 2026-10-27 · feed no longer repaints
+- The feed recomputes the whole session every minute; late data (the 5-min candle sweep tops up the last 20 min, a restart
+  rebuilds the morning, 10-min cooldowns chain from earlier marks) could move or remove marks already sent — after every
+  NinjaTrader reload the arrows sat in different places. Now a mark ≥ 3 min old is LOCKED (final=true) and re-sent
+  unchanged for the rest of the session; marks that would appear later for an already-locked time are dropped; marks
+  younger than 3 min are sent with final=false. `locked_until` in the payload. (A reboot rebuilds from candles.)
+
 ## v0.20.2 — 2026-10-27 · overnight marks in the NinjaTrader feed
 - Feed now also computes the OVERNIGHT session (Cboe GTH 20:15 → 09:30) with the same rules and settings; overnight marks
   carry session="GTH", tested=false, passed=false, rth_passed = whether that signal × setting passed the RTH test.

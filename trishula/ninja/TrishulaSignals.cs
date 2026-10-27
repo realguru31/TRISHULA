@@ -45,6 +45,7 @@ namespace NinjaTrader.NinjaScript.Indicators
         private DateTime lastFetchLocal = DateTime.MinValue;
         private readonly HashSet<string> drawn = new HashSet<string>();
         private int busy;
+        private volatile bool dirty;
         private static readonly TimeZoneInfo EasternTz = FindEastern();
 
         private static TimeZoneInfo FindEastern()
@@ -59,7 +60,7 @@ namespace NinjaTrader.NinjaScript.Indicators
             {
                 Description = "TRISHULA Signals-view marks from the TRISHULA JSON feed (read-only).";
                 Name = "TrishulaSignals";
-                Calculate = Calculate.OnBarClose;
+                Calculate = Calculate.OnPriceChange;          // drawing happens in OnBarUpdate on the next price change
                 IsOverlay = true;
                 DisplayInDataBox = false;
                 DrawOnPricePanel = true;
@@ -101,7 +102,12 @@ namespace NinjaTrader.NinjaScript.Indicators
 
         protected override void OnBarUpdate()
         {
-            // drawing happens when new feed data arrives (TriggerCustomEvent in Poll); nothing per bar
+            // v3: draw ONLY here, on NinjaTrader's own bar thread, and only when the feed brought something new.
+            // (v1/v2 drew from a timer via TriggerCustomEvent + ForceRefresh, which repainted / reloaded the chart.)
+            if (CurrentBar < Count - 2) return;              // skip the historical replay, act on the live edge only
+            if (!dirty) return;
+            dirty = false;
+            Redraw();
         }
 
         // ── background: download + parse ─────────────────────────────────────────────────────────
@@ -132,7 +138,7 @@ namespace NinjaTrader.NinjaScript.Indicators
             {
                 Interlocked.Exchange(ref busy, 0);
             }
-            try { TriggerCustomEvent(o => Redraw(), null); } catch { }
+            dirty = true;                                    // OnBarUpdate picks it up on the next price change
         }
 
         private static string Str(string json, string key)
@@ -268,7 +274,6 @@ namespace NinjaTrader.NinjaScript.Indicators
                                                + (double.IsNaN(last.Es) ? "" : " · ES " + last.Es.ToString("0.00")) : "");
                 Draw.TextFixed(this, "TRI_status", txt, TextPosition.TopLeft);
             }
-            ForceRefresh();
         }
 
         #region Properties

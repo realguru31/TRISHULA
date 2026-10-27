@@ -177,8 +177,32 @@ class Feed:
                 print(f"[feed] error {self.last_err}\n{traceback.format_exc(limit=3)}", flush=True)
             time.sleep(max(5.0, EVERY_SEC - (time.time() - t0)))
 
+    LOCK_MIN = 3        # v0.20.3: a mark older than this is FINAL — it never moves or disappears afterwards
+
     def build_and_write(self) -> dict:
         p = build(self.rec)
+        p = self._freeze(p)
         write(p, self.key)
         self.last_ok = now_et(); self.n_marks = len(p["marks"]); self.last_err = None
+        return p
+
+    def _freeze(self, p: dict) -> dict:
+        """v0.20.3 — NO REPAINT in the feed. The signals are recomputed over the whole session every minute, and late data
+        (the 5-min candle sweep tops up the last 20 min, a restart rebuilds the morning, 10-min cooldowns chain) could move
+        or remove marks already published — NinjaTrader then showed them in different places after every reload.
+        Now: once a mark is ≥ LOCK_MIN minutes old it is locked as published and always re-sent unchanged; a mark that only
+        appears later for an already-locked time is dropped; newer marks are sent with final=false (may still change)."""
+        if not hasattr(self, "_locked") or getattr(self, "_lock_day", None) != p.get("session"):
+            self._locked, self._lock_day, self._lock_upto = {}, p.get("session"), None
+        cut = (now_et() - pd.Timedelta(minutes=self.LOCK_MIN)).isoformat()
+        fresh = {m["id"]: m for m in p["marks"]}
+        upto = self._lock_upto
+        for i, m in fresh.items():                         # lock newly-final marks (only after the previous lock point)
+            if m["t"] <= cut and i not in self._locked and (upto is None or m["t"] > upto):
+                self._locked[i] = dict(m, final=True)
+        self._lock_upto = cut if (upto is None or cut > upto) else upto
+        out = list(self._locked.values())
+        out += [dict(m, final=False) for m in fresh.values() if m["t"] > self._lock_upto and m["id"] not in self._locked]
+        p["marks"] = sorted(out, key=lambda m: m["t"])
+        p["locked_until"] = self._lock_upto
         return p
