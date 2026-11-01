@@ -5,6 +5,7 @@ Rules unchanged: whole zip every time (delete trishula/ → unzip → commit →
 secrets only in Streamlit · one repo, no GitHub tokens · Colab scripts outside the repo, both tokens prefilled.
 
 ## IDEAS (user 27 Oct, not queued for build): Book 0+1DTE experiment (Book is 0DTE only today, feed too) · profile numbers overlap candles → inside bars or top-8 only
+## ✅ BUILT v0.23.0 (APPROVE 1 Nov 22:55 Doha): NinjaTrader 7.1.0 single-leg levels (blue/magenta/yellow dotted) · Book TradingView paste box · tradingview/TRISHULA_Levels.pine 1.0.0
 ## ✅ BUILT v0.22.0 (APPROVE 28 Oct 11:50 Doha): NinjaTrader v7 09:35 dots + slider (zero line) + single-leg band left · app chart 2 single-leg own levels + own lock · Book card lock note fix
 ## ✅ BUILT v0.21.2 (APPROVE 27 Oct 14:09 ET): memory fix (feed incremental minute flow + malloc tuning; replay peak 1.19 GB @1.24M prints) · 09:35 lock saved to GitHub branch trishula-state, restored after reboot, LATE LOCK flag · indicator v6
 ## ✅ BUILT v0.21.1 (APPROVE 27 Oct 07:18 ET): indicator v5 — arrows + labels + status painted in OnRender (drawing objects went missing after reloads); app code unchanged

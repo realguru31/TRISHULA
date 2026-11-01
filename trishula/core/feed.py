@@ -196,11 +196,13 @@ def book_payload(rec) -> dict | None:
         p935 = {float(k): float(v) for k, v in (lock.get("profile") or [])}
     try:
         ref_, _ = D.method_ref(rec, spot, target, now)
-        if is_today:
-            D.clean_lock(rec, e0, day, strad, spot, now, ref_)          # lock the single-leg levels ~09:35 (app shows them)
+        clk = D.clean_lock(rec, e0, day, strad, spot, now, ref_) if is_today else None   # locks ~09:35
         cl = B.cleanB_rows(rec.dsign_table(e0, single_leg=True), "all")
+        clv = clk["levels"] if clk else D.clean_preview(cl, spot, strad, ref_)
     except Exception:                                          # noqa: BLE001
-        cl = None
+        cl, clk, clv = None, None, None
+    clean_levels = [dict(name={"bal": "SL BAL", "up": "SL UP", "dn": "SL DN"}[k], kind=k, spx=round(v, 2), es=es(v))
+                    for k, v in D.level_list(clv)]
     clean = [] if cl is None else [dict(strike=float(r.strike), es=es(r.strike), net=round(float(r.signed_pct), 1))
                                    for r in cl[(cl["strike"] - spot).abs() <= 150].itertuples() if r.signed_pct]
     return dict(state=state, locked_at=(lock or {}).get("locked_at") if state == "locked" else None,
@@ -214,7 +216,8 @@ def book_payload(rec) -> dict | None:
                               conf=round(float(getattr(r, "conf", 0.5)), 2),
                               **({"net_935": round(p935[float(r.strike)], 1)} if float(r.strike) in p935 else {}))
                          for r in prof.itertuples()],
-                clean_profile=clean)
+                clean_profile=clean, clean_state="locked" if clk else ("preview" if clv else "none"),
+                clean_locked_at=(clk or {}).get("locked_at"), clean_levels=clean_levels)
 
 
 def write(payload: dict, key: str) -> str:

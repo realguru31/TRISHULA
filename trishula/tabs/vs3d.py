@@ -456,8 +456,13 @@ def build_book(rec, exps, ts_ms, ctl, notes):
     frame_lbl = "snapshot " + D.naive_et(ts_ms).strftime("%a %H:%M") if ts_ms else "LIVE"
     cap = (f"{' + '.join(exps)} · {frame_lbl} · spot {spot:,.2f} · showing {int(lo)}–{int(hi)} · "
            f"zoom ×{z:.2f} · ref {ref:,.2f} ({ref_src}) · S0 {s0}")
+    try:                                                # v0.23.0: TradingView paste line (TRISHULA Levels.pine)
+        tv = D.tv_line(day if is_today else target, spot, lock, prev_lv, clk, lv2.get("preview_levels"),
+                       flow_rows, clean_sg)
+    except Exception as e:                               # noqa: BLE001
+        tv = f"(TradingView line unavailable: {type(e).__name__}: {e})"
     return dict(png=png, charts=charts, card=card, strip=strip, cap=cap, div=div,
-                cov=coverage_text(ds), ch=ch, spot=spot, lo=lo, hi=hi)
+                cov=coverage_text(ds), ch=ch, spot=spot, lo=lo, hi=hi, tv=tv)
 
 
 def render(rec, ctl, ts_ms=None):
@@ -528,6 +533,9 @@ def render(rec, ctl, ts_ms=None):
                     with col:
                         _img(png)
                 st.caption(bk["cap"] + " · " + bk["cov"])
+                st.caption("📋 TradingView paste — copy (icon on the right) into a free \"Day\" field of the "
+                           "TRISHULA Levels indicator · M/S = locked, m/s = preview · paste after the 09:36 locks")
+                st.code(bk.get("tv", ""), language=None, wrap_lines=True)
     if tabs[2].open:
         with tabs[2]:
             _terrain_controls()

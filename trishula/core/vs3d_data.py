@@ -251,8 +251,10 @@ def clean_lock(rec, e0, day, strad_now, spot, now, ref):
     if not out.get("ok"):
         return None
     ts = et_ms(day, now.time().replace(second=0, microsecond=0))
+    near = rows[(rows["strike"] - spot).abs() <= 200]
     lk = {"levels": out["levels"], "locked_at": now.strftime("%H:%M"), "ts_ms": ts, "src": "live",
-          "late": bool(now.time() > dt.time(9, 40))}
+          "late": bool(now.time() > dt.time(9, 40)),
+          "profile": [[float(k), round(float(v), 1)] for k, v in zip(near["strike"], near["signed_pct"])]}
     rec.ui_state[key] = lk
     ST.save_lock(str(day), key, lk)
     return lk
@@ -401,3 +403,44 @@ def lock_note(lk) -> str:
     if lk.get("src") == "restored":
         parts.append("restored after restart")
     return " · ".join(parts)
+
+
+def level_list(lv) -> list:
+    """[(kind, spx)] from a levels dict: bal / ups / dns."""
+    out = []
+    if not isinstance(lv, dict):
+        return out
+    if lv.get("bal"):
+        out.append(("bal", float(lv["bal"]["peak"])))
+    out += [("up", float(t["peak"])) for t in lv.get("ups", [])]
+    out += [("dn", float(t["peak"])) for t in lv.get("dns", [])]
+    return out
+
+
+def tv_line(day, spot, lock, main_preview, clk, clean_preview_lv, flow_rows, clean_rows, span=100.0) -> str:
+    """v0.23.0: ONE line for the TradingView "TRISHULA Levels" script (paste per day), SPX prices:
+    TRI1|YYYY-MM-DD|M:B7675,U7680,D7670|S:B7760,U7765,D7740|P:7600:4243,…|Q:7615:44,…
+    M/S = main / single-leg levels LOCKED (m/s lowercase = preview) · B balance, U up test, D down test ·
+    P = main profile at the 09:35 lock (dealer net contracts per strike), Q = single-leg profile at its lock
+    (current book when not locked yet) · strikes within ±span of spot."""
+    def lv(levels):
+        return ",".join(f"{dict(bal='B', up='U', dn='D')[k]}{v:g}" for k, v in level_list(levels))
+
+    def prof(pairs):
+        return ",".join(f"{k:g}:{int(round(v))}" for k, v in pairs if abs(k - spot) <= span and round(v) != 0)
+
+    def rows_pairs(r):
+        return [] if r is None or r.empty else list(zip(r["strike"].astype(float), r["signed_pct"].astype(float)))
+    parts = ["TRI1", str(day)]
+    if isinstance(lock, dict) and lock.get("levels"):
+        parts.append("M:" + lv(lock["levels"]))
+    elif main_preview:
+        parts.append("m:" + lv(main_preview))
+    if isinstance(clk, dict) and clk.get("levels"):
+        parts.append("S:" + lv(clk["levels"]))
+    elif clean_preview_lv:
+        parts.append("s:" + lv(clean_preview_lv))
+    parts.append("P:" + prof((lock or {}).get("profile") or rows_pairs(flow_rows)))
+    parts.append("Q:" + prof((clk or {}).get("profile") or rows_pairs(clean_rows)))
+    return "|".join(parts)
+

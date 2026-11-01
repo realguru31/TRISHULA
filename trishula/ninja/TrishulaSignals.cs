@@ -36,6 +36,8 @@ namespace NinjaTrader.NinjaScript.Indicators
 {
     public class TrishulaSignals : Indicator
     {
+        // semantic version of THIS indicator (shown on the chart); history in ninja/CHANGELOG.md
+        public const string IndicatorVersion = "7.1.0";
         private class Mark
         {
             public string Id, Code, Name, Mode, Position, Session;
@@ -52,6 +54,8 @@ namespace NinjaTrader.NinjaScript.Indicators
             public string State = "none", LockedAt = "", LockNote = "";
             public double Ratio = double.NaN, StraddleValue = double.NaN, StraddleUpEs = double.NaN, StraddleDnEs = double.NaN;
             public List<BookLevel> Levels = new List<BookLevel>();
+            public List<BookLevel> CleanLevels = new List<BookLevel>();   // 7.1: single-leg levels
+            public string CleanState = "none", CleanLockedAt = "";
             public List<ProfBar> Profile = new List<ProfBar>();
             public List<ProfBar> Clean = new List<ProfBar>();       // v7: single-leg (clean-B) profile
         }
@@ -104,6 +108,10 @@ namespace NinjaTrader.NinjaScript.Indicators
                 ShowProfile = true;
                 ProfileWidth = 220;
                 ShowLockDots = true;
+                ShowSingleLegLevels = true;
+                SLUpBrush = Brushes.DodgerBlue;
+                SLDnBrush = Brushes.Magenta;
+                SLBalBrush = Brushes.Yellow;
                 DotBrush = Brushes.CornflowerBlue;
                 ShowSingleLeg = true;
                 SingleLegWidth = 200;
@@ -136,7 +144,7 @@ namespace NinjaTrader.NinjaScript.Indicators
         // chart label shows just the name — never the feed URL / key (NinjaTrader otherwise prints every parameter)
         public override string DisplayName
         {
-            get { return "TRISHULA"; }
+            get { return "TRISHULA v" + IndicatorVersion; }
         }
 
         protected override void OnBarUpdate()
@@ -221,6 +229,11 @@ namespace NinjaTrader.NinjaScript.Indicators
             foreach (Match m in Regex.Matches(Arr(b, "levels"), "\\{[^{}]*\\}"))
                 bk.Levels.Add(new BookLevel { Name = Str(m.Value, "name"), Kind = Str(m.Value, "kind"),
                                           Spx = Num(m.Value, "spx", double.NaN), Es = Num(m.Value, "es", double.NaN) });
+            foreach (Match m in Regex.Matches(Arr(b, "clean_levels"), "\\{[^{}]*\\}"))
+                bk.CleanLevels.Add(new BookLevel { Name = Str(m.Value, "name"), Kind = Str(m.Value, "kind"),
+                                               Spx = Num(m.Value, "spx", double.NaN), Es = Num(m.Value, "es", double.NaN) });
+            bk.CleanState = Str(b, "clean_state");
+            bk.CleanLockedAt = Str(b, "clean_locked_at");
             foreach (Match m in Regex.Matches(Arr(b, "profile"), "\\{[^{}]*\\}"))
             {
                 var r = new ProfBar { Strike = Num(m.Value, "strike", double.NaN), Es = Num(m.Value, "es", double.NaN),
@@ -306,7 +319,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                 age = mins > 3 && feedStatus == "live" ? "  ⚠ STALE " + mins.ToString("0") + " min" : "";
             }
             var last = latest.Where(Wanted).OrderBy(x => x.TimeEt).LastOrDefault();
-            return "TRISHULA · " + (IncludeOvernight ? "RTH+ON · " : "RTH · ") + Sensitivity + " · " + (Tape == TrishulaTape.ZeroDTE ? "0DTE" : "0+1DTE")
+            return "TRISHULA v" + IndicatorVersion + " · " + (IncludeOvernight ? "RTH+ON · " : "RTH · ") + Sensitivity + " · " + (Tape == TrishulaTape.ZeroDTE ? "0DTE" : "0+1DTE")
                    + (OnlyPassed ? " · passed only" : " · all") + " · feed " + (feedStatus == "" ? "—" : feedStatus) + " "
                    + (feedGenerated.Length >= 19 ? feedGenerated.Substring(11, 8) : "") + " ET" + age
                    + BookStatus()
@@ -355,13 +368,19 @@ namespace NinjaTrader.NinjaScript.Indicators
             }
         }
 
+        private static string CleanStatus(BookData bk)
+        {
+            if (bk.CleanLevels.Count == 0) return "";
+            return bk.CleanState == "locked" ? " · single-leg locked " + bk.CleanLockedAt : " · single-leg preview";
+        }
+
         private string BookStatus()
         {
             var bk = book;
             if (bk == null) return "\nbook: —";
             if (bk.State == "locked")
-                return "\nbook: LOCKED " + bk.LockedAt + " ET (solid)" + (bk.LockNote != "" ? " · " + bk.LockNote : "");
-            if (bk.State == "preview") return "\nbook: PREVIEW — yesterday's book · locks 09:35 ET (dashed)";
+                return "\nbook: LOCKED " + bk.LockedAt + " ET (solid)" + (bk.LockNote != "" ? " · " + bk.LockNote : "") + CleanStatus(bk);
+            if (bk.State == "preview") return "\nbook: PREVIEW — yesterday's book · locks 09:35 ET (dashed)" + CleanStatus(bk);
             return "\nbook: no levels yet";
         }
 
@@ -487,6 +506,26 @@ namespace NinjaTrader.NinjaScript.Indicators
                             else RenderTarget.DrawLine(new SharpDX.Vector2(left, y), new SharpDX.Vector2(right, y), lb, LineWidth, dash);
                             RenderTarget.DrawText(lv.Name + (locked ? "" : " (preview)") + "  " + lv.Es.ToString("0.00")
                                 + "  · SPX " + lv.Spx.ToString("0"), tf, new SharpDX.RectangleF(labelX, y - 16, 400, 15), lb);
+                        }
+                    }
+                }
+
+                // 4) 7.1: SINGLE-LEG levels — dotted, blue UP / magenta DN / yellow BALANCE, labels left of the profile
+                if (ShowSingleLegLevels && bk.CleanLevels.Count > 0)
+                {
+                    bool sl = bk.CleanState == "locked";
+                    float lx = right - ProfileWidth - 440;
+                    foreach (var lv in bk.CleanLevels)
+                    {
+                        if (double.IsNaN(lv.Es)) continue;
+                        float y = chartScale.GetYByValue(lv.Es);
+                        if (y < top || y > bottom) continue;
+                        Brush b = lv.Kind == "up" ? SLUpBrush : lv.Kind == "dn" ? SLDnBrush : SLBalBrush;
+                        using (var lb = Dx(b, sl ? 1f : 0.6f))
+                        {
+                            RenderTarget.DrawLine(new SharpDX.Vector2(left, y), new SharpDX.Vector2(right, y), lb, LineWidth, dot);
+                            RenderTarget.DrawText(lv.Name + (sl ? "" : " (preview)") + "  " + lv.Es.ToString("0.00")
+                                + "  · SPX " + lv.Spx.ToString("0"), tf, new SharpDX.RectangleF(lx, y - 16, 300, 15), lb);
                         }
                     }
                 }
@@ -652,6 +691,24 @@ namespace NinjaTrader.NinjaScript.Indicators
         public Brush SingleLegMinusBrush { get; set; }
         [Browsable(false)]
         public string SingleLegMinusBrushSerializable { get { return Serialize.BrushToString(SingleLegMinusBrush); } set { SingleLegMinusBrush = Serialize.StringToBrush(value); } }
+
+        [NinjaScriptProperty, Display(Name = "Single-leg levels (dotted)", Order = 24, GroupName = "4. Book")]
+        public bool ShowSingleLegLevels { get; set; }
+
+        [XmlIgnore, Display(Name = "SL UP colour", Order = 40, GroupName = "4. Book")]
+        public Brush SLUpBrush { get; set; }
+        [Browsable(false)]
+        public string SLUpBrushSerializable { get { return Serialize.BrushToString(SLUpBrush); } set { SLUpBrush = Serialize.StringToBrush(value); } }
+
+        [XmlIgnore, Display(Name = "SL DN colour", Order = 41, GroupName = "4. Book")]
+        public Brush SLDnBrush { get; set; }
+        [Browsable(false)]
+        public string SLDnBrushSerializable { get { return Serialize.BrushToString(SLDnBrush); } set { SLDnBrush = Serialize.StringToBrush(value); } }
+
+        [XmlIgnore, Display(Name = "SL BALANCE colour", Order = 42, GroupName = "4. Book")]
+        public Brush SLBalBrush { get; set; }
+        [Browsable(false)]
+        public string SLBalBrushSerializable { get { return Serialize.BrushToString(SLBalBrush); } set { SLBalBrush = Serialize.StringToBrush(value); } }
         #endregion
     }
 }

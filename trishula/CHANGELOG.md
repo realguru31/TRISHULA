@@ -3,6 +3,18 @@
 Semantic versioning: MAJOR.MINOR.PATCH. The running version is shown in the app's
 status bar, every tab footer, and the Recorder diagnostics panel.
 
+## v0.23.0 — 2026-11-02 · single-leg levels on NinjaTrader · TradingView paste + "TRISHULA Levels" Pine script
+- Feed `book` adds the single-leg levels (clean_levels, clean_state, clean_locked_at) from the app's single-leg lock;
+  the single-leg lock now also stores its profile.
+- NinjaTrader indicator 7.1.0: single-leg levels dotted — SL UP dodger blue · SL DN magenta · SL BAL yellow (faded =
+  preview), labels left of the profile, own switch + colours; status line shows single-leg locked / preview.
+- Book tab: "TradingView paste" box (copy icon) — one line per day: TRI1|date|M:/m: main levels|S:/s: single-leg
+  levels|P: 09:35 main profile|Q: single-leg profile (SPX prices, ±100 of spot; upper case = locked).
+- tradingview/TRISHULA_Levels.pine (1.0.0): 10 paste fields, date read from the paste; each day's 10 levels drawn
+  across that day's session in the NinjaTrader colours (latest day extends right + labels); latest day's main and
+  single-leg 09:35 profiles to the right of the last bar; SPX prices converted on ES / MES / SPX CFDs by the live
+  chart ÷ SPX ratio (taken where SPX prints, held overnight). No straddle, no live bars.
+
 ## v0.22.0 — 2026-10-28 · Book: 09:35 dots + single-leg view on NinjaTrader · single-leg levels on the app
 - 09:35 lock now stores its own profile (dealer net contracts per strike, ±200 of spot); saved/restored with the lock.
   Feed profile rows carry net_935. NinjaTrader v7: with dots ON the profile gets a ZERO LINE in the middle (right =
@@ -13,6 +25,7 @@ status bar, every tab footer, and the Recorder diagnostics panel.
 - App, Book chart 2 (CLEAN-B): levels now from the single-leg book's OWN structure (was the flow-book lock imposed),
   own lock taken at the first computation ≥ 09:35 (feed thread, ~09:35–09:36), saved/restored like the main lock;
   title shows "preview" / "locked hh:mm". Main book, its levels and the card are untouched.
+- NinjaTrader indicator now versioned on its own: 7.0.0 (shown on the chart), history in ninja/CHANGELOG.md.
 - Fix: Book-tab card header now shows the lock note (restored / LATE LOCK) — v0.21.2 only showed it in the combined view.
 
 ## v0.21.2 — 2026-10-27 · memory fix (27 Oct 13:2x crash) + 09:35 lock survives reboots
