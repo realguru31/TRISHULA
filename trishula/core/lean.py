@@ -13,7 +13,7 @@ written every 15 min and at the 16:15 roll (from the recorder's flush), ~30 KB a
 LOCKED TEST (pre-registered 5 Nov 2026 04:49 ET, before any single-leg day exists — see RESEARCH_LOG §12):
     A  1-min · 0DTE · rolling 15 m · sticky 8 % · 2-bar break · cooldown 10 · grey holds
     B  1-min · 0+1DTE · rolling 20 m · sticky 1 % · cooldown 5 · grey holds
-    C  5-min · 0+1DTE · rolling 10 m · band 8 % · 2-bar break · cooldown 5 · grey holds
+    (C dropped 11 Nov 2026 by the user — fewer rules, cleaner test)
     D  1-min · 0DTE · per bar 15 % · cooldown 10 · grey holds
   each traded at every colour change, 0.5 SPX pt per round trip, single-leg flow. PASS = ≥ 15 days, total > 0, both
   halves > 0, above the 95th percentile of 200 time-shifted-flow runs, and the same rule on ALL prints is worse.
@@ -35,7 +35,6 @@ SAVE_EVERY_S = 15 * 60
 LOCKED = {
     "A": dict(bar=1, flow="0DTE", src="roll", win=15, mode="sticky", X=0.08, conf=True, cool=10, skip=0, hold=True),
     "B": dict(bar=1, flow="0+1DTE", src="roll", win=20, mode="sticky", X=0.01, conf=False, cool=5, skip=0, hold=True),
-    "C": dict(bar=5, flow="0+1DTE", src="roll", win=10, mode="band", X=0.08, conf=True, cool=5, skip=0, hold=True),
     "D": dict(bar=1, flow="0DTE", src="bar", win=1, mode="band", X=0.15, conf=False, cool=10, skip=0, hold=True),
 }
 DEFAULT = dict(LOCKED["A"], flow_kind="single-leg")

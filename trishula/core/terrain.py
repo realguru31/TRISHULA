@@ -86,7 +86,7 @@ def _dealer_sign(c, signed=True):
 # ── the field ───────────────────────────────────────────────────────────
 def terrain_grid(chain, spot, exps, now, day, greek="Delta Change", vol_adj=0.0, field_mode=FIELD_MODES[0],
                  p_min=None, p_max=None, n_price=170, n_time=84, simulated_gamma=False,
-                 simulated_charm=False, weighting="OI + Volume", signed=False, taus_override=None):
+                 simulated_charm=False, weighting="OI + Volume", signed=False, taus_override=None, units="raw"):
     """Field Z(price,time) for the chosen greek over ALL expiries in `exps`, on the
     09:30–16:00 axis of `day`. Leg sign: naive calls+/puts−, or dealer dsign when signed."""
     if p_min is None:
@@ -164,6 +164,11 @@ def terrain_grid(chain, spot, exps, now, day, greek="Delta Change", vol_adj=0.0,
         Z = book_now - Z
     if str(field_mode).startswith("Per-strike"):
         Z = gaussian_filter1d(Z, 0.6, axis=0)
+    if units == "minis":                    # v0.25.0 Dan scale (guide §2.1 / §3.1 / §7.9): E-mini hedge per $1 / per 5 min
+        if greek == "Gamma":
+            Z = Z / (100.0 * pg[:, None]) * 2.0          # exposure (SPX units per $1) × 2 = minis per $1 (+ = dealer long γ)
+        elif greek == "Charm":
+            Z = Z / 100.0 / (365.0 * 24 * 12) * 2.0      # exposure per 5 min × 2 = minis per 5 min (+ = dealers SELL)
     return pg, Z, taus
 
 
@@ -466,7 +471,9 @@ def style_time_axis(ax, x0, x1):
 
 
 # ── figures (vs3dgbt _render_terrain) ──────────────────────────────────
-FROZEN_KEYS = ("greek", "weighting", "norm", "pct", "intensity", "power", "sat", "voladj", "simg", "simc", "fieldmode", "signed")
+FROZEN_KEYS = ("greek", "weighting", "norm", "pct", "intensity", "power", "sat", "voladj", "simg", "simc", "fieldmode", "signed",
+               "signsrc")
+DAN_CAPS = {"Gamma": 250.0, "Charm": 100.0}           # v0.25.0: Dan's manual ranges (guide §2.4, §7.5)
 
 
 def frozen_sig(o: dict) -> str:
@@ -484,9 +491,13 @@ def terrain_figures(ch, spot, exps, now, day, bars, o, cap_state, peak_pts=(), f
     notes = []
     t_greek = o["greek"]; t_wt = o["weighting"]; t_norm = o["norm"]
     base = "Gamma" if t_greek in (GHEAVY, GDECAY) else t_greek
+    dan = str(t_norm).startswith("Dan") and base in ("Gamma", "Charm") and t_greek not in (GHEAVY, GDECAY)
     kw = dict(greek=base, field_mode=o["fieldmode"], vol_adj=(0.01 if o["voladj"] == "+1%" else 0.0),
               p_min=o["p_min"], p_max=o["p_max"], simulated_gamma=o["simg"], simulated_charm=o["simc"],
-              weighting=t_wt, signed=o["signed"])
+              weighting=t_wt, signed=o["signed"], units="minis" if dan else "raw")
+    if str(t_norm).startswith("Dan"):
+        o = dict(o, intensity="Power", power=1.0)        # Dan: linear, power ≈ 1 (§2.4 / §7.5)
+        t_norm = "Manual (fixed cap)" if not dan else t_norm
     pg, Z, taus = terrain_grid(ch, spot, exps, now, day, **kw)
     if t_greek == GHEAVY:
         Z = np.abs(Z)
@@ -495,9 +506,15 @@ def terrain_figures(ch, spot, exps, now, day, bars, o, cap_state, peak_pts=(), f
     capkey = f"terr_cap_{t_greek}_{t_wt}"
     seed = cap_state.get(capkey)
     _sat = float(o["sat"])
-    V, used_cap = terrain_scale(Z, t_norm, (seed * _sat if (seed and t_norm == "Manual (fixed cap)") else
-                                            (seed if t_norm == "Manual (fixed cap)" else None)), o["pct"])
-    if t_norm == "Manual (fixed cap)" and seed is None:
+    if dan:                                               # fixed symmetric caps: γ ±250 minis/$1 · charm ±100 minis/5 min
+        used_cap = DAN_CAPS[base] * _sat
+        V = np.clip(Z / used_cap, -1, 1)
+        notes.append(f"Dan scale: {base} in E-minis {'per $1' if base == 'Gamma' else 'per 5 min'}, linear ±{used_cap:,.0f}, "
+                     "power 1 — a loose day looks loose (guide §2.4)")
+    else:
+        V, used_cap = terrain_scale(Z, t_norm, (seed * _sat if (seed and t_norm == "Manual (fixed cap)") else
+                                                (seed if t_norm == "Manual (fixed cap)" else None)), o["pct"])
+    if t_norm == "Manual (fixed cap)" and seed is None and not dan:
         cap_state[capkey] = 1.2 * float(np.percentile(np.abs(Z), 98)) or 1.0
         V, used_cap = terrain_scale(Z, t_norm, cap_state[capkey] * _sat, o["pct"])
     _p92 = float(np.percentile(np.abs(Z), 92))
@@ -621,7 +638,8 @@ def terrain_figures(ch, spot, exps, now, day, bars, o, cap_state, peak_pts=(), f
     axp.set_xlim(-1, 1); axp.set_xticks([])
     for s_ in ("top", "right", "left", "bottom"):
         axp.spines[s_].set_color(GRID)
-    _sgmode = "SIGNED·flow" if (o["signed"] and "dsign" in ch.columns and ch["dsign"].notna().any()) else "naive±"
+    _sgmode = (("SIGNED·" + {"single-leg": "single-leg", "opening": "opening book"}.get(o.get("signsrc"), "flow"))
+               if (o["signed"] and "dsign" in ch.columns and ch["dsign"].notna().any()) else "naive±")
     pol = ("green = dealers BUY to arrive hedged (supportive) · red = SELL" if t_greek == "Delta Change"
            else "green = +γ suppressive · red = −γ amplifying" if t_greek == "Gamma"
            else "bright = heavy book · direction UNKNOWN by design (roles come from behavior)" if t_greek == GHEAVY
@@ -649,8 +667,8 @@ def terrain_figures(ch, spot, exps, now, day, bars, o, cap_state, peak_pts=(), f
         _exT, _mnT = gamma_exposure_minis(ch0, o["signed"])
         if _mnT is not None:
             _hp = f" · ≈{_mnT:+,.0f} minis/$1 @spot"
-    ax.set_title(f"TERRAIN · {t_greek} · {t_wt} · {_sgmode} · exps {len(exps)} · cap {cap_state.get(capkey, 0):,.0f}"
-                 f" · {o['intensity']}({o['power']:g})" + (" · pockets" if o["pockets"] else "") + _hp
+    ax.set_title(f"TERRAIN · {t_greek} · {t_wt} · {_sgmode} · exps {len(exps)} · " + (f"Dan ±{used_cap:,.0f} minis/$1" if dan else f"cap {cap_state.get(capkey, 0):,.0f}")
+                 + f" · {o['intensity']}({o['power']:g})" + (" · pockets" if o["pockets"] else "") + _hp
                  + f" · α{o['alpha']:.2f}   [{pol}]", color=TXT, fontsize=10.5, loc="left")
     _yt = np.arange(np.ceil(pg[0] / 25) * 25, pg[-1] + 1, 25)
     for _y in _yt:
@@ -674,8 +692,11 @@ def terrain_figures(ch, spot, exps, now, day, bars, o, cap_state, peak_pts=(), f
             _, Zc, _ = terrain_grid(ch, spot, exps, now, day, **kw2)
             ck = f"terr_cap_Charm_{t_wt}" + ("_sim" if o["simc"] else "")
             cseed = cap_state.get(ck)
-            Vc, c_cap = terrain_scale(Zc, t_norm, cseed if t_norm == "Manual (fixed cap)" else None, o["pct"])
-            if t_norm == "Manual (fixed cap)" and cseed is None:
+            if dan:
+                c_cap = DAN_CAPS["Charm"] * _sat; Vc = np.clip(Zc / c_cap, -1, 1)
+            else:
+                Vc, c_cap = terrain_scale(Zc, t_norm, cseed if t_norm == "Manual (fixed cap)" else None, o["pct"])
+            if t_norm == "Manual (fixed cap)" and cseed is None and not dan:
                 cap_state[ck] = 1.2 * float(np.percentile(np.abs(Zc), 98)) or 1.0
                 Vc, c_cap = terrain_scale(Zc, t_norm, cap_state[ck], o["pct"])
             cap_state.setdefault(f"terr_hist_Charm_{t_wt}", []).append(float(np.percentile(np.abs(Zc), 92)))
@@ -730,7 +751,7 @@ def terrain_figures(ch, spot, exps, now, day, bars, o, cap_state, peak_pts=(), f
                 _c5 = f" · ≈{abs(_db) / (365 * 24 * 12) * 2 / 100:,.0f} minis/5min"
             except Exception:
                 pass
-            axc.set_title(f"CHARM{' ·sim5m' if o['simc'] else ''} · {t_wt} · {_sgmode} · cap {cap_state.get(ck, 0):,.0f}"
+            axc.set_title(f"CHARM{' ·sim5m' if o['simc'] else ''} · {t_wt} · {_sgmode} · " + (f"Dan ±{c_cap:,.0f} minis/5min" if dan else f"cap {cap_state.get(ck, 0):,.0f}")
                           + (f" · flip {_cflip:.0f}" if _cflip else "") + _c5 + "   "
                           "[gold = dealers must SELL as time passes · blue = must BUY]", color=TXT, fontsize=10.5, loc="left")
             figs.append(fc)

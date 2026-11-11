@@ -44,8 +44,8 @@ def _controls(days):
     _defaults()
     c = st.columns([1.3, 1.1, 0.8, 1.0, 1.1])
     c[0].selectbox("day", [LIVE] + days, key=_K + "day")
-    c[1].selectbox("preset (locked test rules)", ["A", "B", "C", "D", "custom"], key=_K + "preset", on_change=_preset_apply,
-                   help="A your 4 Nov screen · B best on history · C 5-min band · D per bar — see the locked test below")
+    c[1].selectbox("preset (locked test rules)", ["A", "B", "D", "custom"], key=_K + "preset", on_change=_preset_apply,
+                   help="A your 4 Nov screen · B best on history · D per bar — see the locked test below")
     c[2].selectbox("bars", [1, 5], key=_K + "bar", format_func=lambda x: f"{x} min")
     c[3].selectbox("flow", ["0DTE", "0+1DTE"], key=_K + "flow")
     c[4].selectbox("prints", ["single-leg", "all"], key=_K + "kind", help="single-leg = spread / complex legs removed")
@@ -67,7 +67,7 @@ def _controls(days):
                 hold=bool(s[_K + "hold"]))
     match = [k for k, r in LN.LOCKED.items()
              if all(rule[f] == v for f, v in r.items() if f != "win" or r["src"] == "roll") and s[_K + "kind"] == "single-leg"]
-    st.caption(f"settings = locked rule {match[0]}" if match else "custom settings (not one of the locked rules A–D)")
+    st.caption(f"settings = locked rule {match[0]}" if match else "custom settings (not one of the locked rules A / B / D)")
     return rule, s[_K + "kind"], s[_K + "day"]
 
 
@@ -95,10 +95,10 @@ def _figure(b, col, lean, rule, tr):
     for v, c_ in ((rule["X"], COL[1]), (-rule["X"], COL[-1])):
         f.add_trace(go.Scatter(x=[x[0], x[-1]], y=[100 * v] * 2, mode="lines", line=dict(color=c_, width=1, dash="dot"),
                                yaxis="y3", hoverinfo="skip", showlegend=False))
-    f.update_layout(template="plotly_dark", paper_bgcolor=BG, plot_bgcolor=BG, height=760, margin=dict(t=10, l=60, r=20, b=30),
+    f.update_layout(template="plotly_dark", paper_bgcolor=BG, plot_bgcolor=BG, height=900, margin=dict(t=10, l=60, r=20, b=30),
                     xaxis=dict(type="category", categoryorder="array", categoryarray=x, rangeslider=dict(visible=False), nticks=26),
-                    yaxis=dict(domain=[0.40, 1], title="SPX"), yaxis2=dict(domain=[0.18, 0.36], title="net Δ$ M"),
-                    yaxis3=dict(domain=[0, 0.15], title="lean %"), hovermode="x")
+                    yaxis=dict(domain=[0.46, 1], title="SPX"), yaxis2=dict(domain=[0.28, 0.42], title="net Δ$ M"),
+                    yaxis3=dict(domain=[0, 0.24], title="lean %"), hovermode="x")
     return f
 
 
@@ -184,7 +184,7 @@ def render(rec):
     if n:
         show = tr.assign(entry=tr.entry.dt.strftime("%H:%M"), exit=tr.exit.dt.strftime("%H:%M")).round(2)
         st.dataframe(show, hide_index=True, width="stretch", height=min(36 * (n + 1), 320))
-    with st.expander(f"🧪 Locked test A–D on saved single-leg days ({len(days)} saved)"):
+    with st.expander(f"🧪 Locked test A / B / D on saved single-leg days ({len(days)} saved)"):
         st.caption("Pre-registered 5 Nov 2026 before any single-leg day existed. PASS = ≥ 15 days, total > 0, both halves "
                    "> 0, above the 95th percentile of 200 time-shifted-flow runs, and better than the same rule on all prints.")
         for k, r in LN.LOCKED.items():
@@ -193,7 +193,7 @@ def render(rec):
             st.caption(f"{k}: {r['bar']}-min · {r['flow']} · {how} · {r['mode']} {r['X']:.0%} · {brk}cooldown {r['cool']}")
         c1, c2 = st.columns(2)
         if c1.button("run the locked test", key="ln_test", disabled=not days):
-            with st.spinner("running A–D + 200 null runs each…"):
+            with st.spinner("running A, B, D + 200 null runs each…"):
                 ds = [x for x in (LN.load_day(dd) for dd in sorted(days)) if x]
                 st.session_state["ln_test_res"] = LN.locked_test(ds)
         if st.session_state.get("ln_test_res") is not None:

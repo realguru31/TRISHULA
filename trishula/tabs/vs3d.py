@@ -68,6 +68,9 @@ def _book_controls():
         c[7].checkbox("Spot path", True, key="vs_spot", help="white price path on every chart, session time along the top")
 
 
+SIGNSRC = {"all prints (tape)": "all", "single-leg (tape)": "single-leg", "opening book (pre-open sign × OI)": "opening"}
+
+
 def _terrain_controls():
     ss = st.session_state
     with st.expander("🗺 Terrain controls", expanded=False):
@@ -81,8 +84,14 @@ def _terrain_controls():
         a.checkbox("Signed field (dealer dsign)", True, key="tr_signed",
                    help="ON: per-leg dealer signs from the tape (seed + live; unseeded = naive × 0.2) drive the "
                         "field, like the Book. OFF: vs3dgbt's naive calls+/puts−.")
-        b.selectbox("Range", ["Manual (fixed cap)", "Percentile", "Std Dev"], index=0, key="tr_norm",
-                    help="Manual (guide §2.4): fixed symmetric cap so a loose day LOOKS loose.")
+        a.selectbox("Sign source", list(SIGNSRC), index=0, key="tr_signsrc",
+                    help="all prints = tape sign incl. spread legs (as before) · single-leg = spread / complex legs "
+                         "removed (like Book chart 2) · opening book = the PRE-OPEN sign × OI only — closest we get "
+                         "to VS3D's 9pm expiring-OI 'blue dots' (guide §4.5); weighting is forced to OI.")
+        b.selectbox("Range", ["Manual (fixed cap)", "Dan (minis, linear ±250 / ±100)", "Percentile", "Std Dev"], index=0,
+                    key="tr_norm",
+                    help="Manual (guide §2.4): fixed symmetric cap so a loose day LOOKS loose. Dan: gamma in E-minis "
+                         "per $1 (±250) and charm in E-minis per 5 min (±100), linear, power 1 — VS3D's own scale.")
         if ss.get("tr_norm", "Manual (fixed cap)") == "Percentile":
             b.slider("Percentile hi", 80, 99, 95, key="tr_pct")
         b1, b2 = b.columns(2)
@@ -128,16 +137,37 @@ def _terrain_opts(spot, ctl, canonical=False):
              strad=ss.get("tr_strad", False), levels=ss.get("tr_lvls", False), voladj=ss.get("tr_voladj", "0%"),
              simg=ss.get("tr_simg", False), simc=ss.get("tr_simc", False), charm2=ss.get("tr_charm2", True),
              fieldmode=ss.get("tr_fieldmode", T.FIELD_MODES[0]), signed=ss.get("tr_signed", True),
+             signsrc=SIGNSRC.get(ss.get("tr_signsrc", "all prints (tape)"), "all"),
              zoom=float(ss.get("tr_zoom", 1.0)), p_min=spot - half, p_max=spot + half)
+    if o["signsrc"] == "opening":
+        o["weighting"] = "OI (opening book)"
     if canonical:                       # vs3dgbt canonical pair: Gamma + Charm, overlay-free
         o.update(greek="Gamma", strad=False, levels=False, charm2=True, zoom=1.0)
     return o
+
+
+def _resign(rec, exps, ch, src):
+    """v0.25.0: replace the chain's dsign by the chosen sign source (all prints = unchanged)."""
+    if src == "all" or ch is None or ch.empty:
+        return ch
+    parts = []
+    for e in exps:
+        t = rec.dsign_table(e, single_leg=(src == "single-leg"))
+        col = "seed_dsign" if src == "opening" else "dsign"
+        if len(t):
+            parts.append(t[["sym", col]].rename(columns={col: "_ds"}))
+    if not parts:
+        return ch
+    m = dict(pd.concat(parts).dropna().values)
+    return ch.assign(dsign=ch["sym"].map(m))
 
 
 def build_terrain(rec, exps, ts_ms, ctl, canonical=False):
     ch, spot, now = D.frame(rec, exps, ts_ms)
     if ch.empty or not spot == spot or not ch["gamma"].notna().any():
         return None, ["waiting for greeks / OI / spot"]
+    _src = SIGNSRC.get(st.session_state.get("tr_signsrc", "all prints (tape)"), "all")
+    ch = _resign(rec, exps, ch, _src)
     target = rec.exps[0] if rec.exps else D.session_date(rec)
     day = D.session_date(rec)
     axis_day = day if day == target else target          # weekend / pre-open: project the next session
@@ -174,7 +204,7 @@ def build_terrain(rec, exps, ts_ms, ctl, canonical=False):
         ch_j, spot_j, now_j = D.frame(rec, exps, int(snaps[i]))
         if ch_j.empty or not spot_j == spot_j:
             return None
-        return ch_j, spot_j, now_j
+        return _resign(rec, exps, ch_j, _src), spot_j, now_j
     figs, notes = T.terrain_figures(ch, spot, exps, now, axis_day, bars, o, caps, peak, frozen=frozen, backfill=_backfill)
     LD.stage("rendering terrain", 0.85)
     res = ([B.fig_png(f) for f in figs], notes)
