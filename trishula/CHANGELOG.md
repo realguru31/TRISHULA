@@ -3,6 +3,18 @@
 Semantic versioning: MAJOR.MINOR.PATCH. The running version is shown in the app's
 status bar, every tab footer, and the Recorder diagnostics panel.
 
+## v0.27.1 — 2026-11-12 · Day data → GitHub Releases (so Claude can pull it)
+- New core/ship.py: the "📦 prepare today's data" zip is uploaded to a **GitHub Release** on this repo, tag
+  `data-YYYY-MM-DD` (tagged on the trishula-state branch, pre-release, never "latest"). Release files are not in the
+  git history, so the repo does not grow, and nothing redeploys the app.
+- **Automatic** once per trading day at 16:05–16:14 ET (before the 16:15 roll) as `trishula_day_<date>_close.zip`.
+- **📤 send today to GitHub** button in "Today's data + past sessions" for a mid-session copy
+  (`..._<HHMM>.zip`, ET); status + errors shown next to it.
+- **Retention:** only the newest 10 data days are kept; older data releases and their tags are deleted after each
+  send. Code, main and trishula-state are never touched.
+- Token: the existing GITHUB_STATE_TOKEN (Contents read/write covers releases). No token → button disabled, no auto.
+- app.py `_day_zip` now calls `core.ship.day_zip` (same contents).
+
 ## v0.27.0 — 2026-11-12 · Book levels = Dan's Test/Anchor method · Terrain defaults
 - Why: the old card (vs3dgbt rule) centred its window on the 09:30 open at ±2.5× straddle and locked at 09:35. On
   12 Nov it locked UP 7565 (already below spot) >> 7600, DN 7400, BALANCE 7465 — mostly unusable. The guide (§4.3–4.7)

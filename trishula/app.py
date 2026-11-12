@@ -90,6 +90,16 @@ from core import state as ST                    # v0.21.2: 09:35 lock survives r
 ST.configure(str(st.secrets.get("GITHUB_STATE_TOKEN", "") or ""), str(st.secrets.get("GITHUB_STATE_REPO", "") or "") or None)
 _fkey = str(st.secrets.get("SIGNALS_KEY", "") or "")
 feed = get_feed(VERSION, _fkey) if len(_fkey) >= 16 else None
+
+
+@st.cache_resource(show_spinner=False)
+def get_shipper(version: str):
+    """v0.27.1: sends the day's zip to a GitHub Release (data-YYYY-MM-DD) once a day at 16:05–16:14 ET."""
+    from core.ship import AutoShip
+    return AutoShip(rec).start()
+
+
+get_shipper(VERSION).start()
 if feed is not None:
     feed.start()
 
@@ -175,42 +185,9 @@ for t, name, fn in ((t1, "TASTIER", lambda: tastier.render(v, ctl)),
             st.caption(f"{name} · {LABEL}")
 
 def _day_zip() -> bytes:
-    """L13: the day's recorded data as a zip of parquet/json (prints with spreadLeg, snapshots, OI, price)."""
-    import io
-    import json
-    import zipfile
-    import pandas as pd
-    buf = io.BytesIO()
-    parts = {"prints.parquet": lambda: rec.prints_df(), "chain_snapshots.parquet": lambda: rec.chain_df(),
-             "spot.parquet": lambda: rec.spot_df(), "es1m.parquet": lambda: rec.es_df(),
-             "candles5.parquet": lambda: rec.candles5_df(), "spx1m.parquet": lambda: rec.candles_df(),
-             "opt1m_backfill.parquet": lambda: rec.opt1m_df(),          # L22: the ridges' pre-restart source
-             "dt2_scorecard.parquet": lambda: (pd.concat(list(rec.ui_state.get("_dt2_cards", {}).values()), ignore_index=True)
-                                               if rec.ui_state.get("_dt2_cards") else None),   # v0.17: DT v2 signals + outcomes
-             "signals_card.parquet": lambda: (pd.concat(list(rec.ui_state.get("_sig_cards", {}).values()), ignore_index=True)
-                                              if rec.ui_state.get("_sig_cards") else None)}   # v0.18: Signals view marks + outcomes
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-        for name, fn in parts.items():
-            try:
-                df = fn()
-                if df is not None and len(df):
-                    b = io.BytesIO()
-                    df.to_parquet(b)
-                    z.writestr(name, b.getvalue())
-            except Exception as e:                       # noqa: BLE001
-                z.writestr(name + ".error.txt", f"{type(e).__name__}: {e}")
-        with rec.lock:
-            oi = {k: dict(v) for k, v in rec.oi_log.items()}
-            legs = {k: list(v) for k, v in rec.legs.items()}
-        z.writestr("oi_log.json", json.dumps(oi))
-        z.writestr("legs.json", json.dumps(legs))
-        z.writestr("status.json", json.dumps(rec.status(), default=str))
-        try:                                             # v0.24.0: lean minutes (single-leg + all, 0DTE/1DTE, $M Δ) + SPX 1m
-            from core import lean as LN
-            z.writestr("lean_minutes.json", json.dumps(LN.live_day(rec) or {}, default=float))
-        except Exception as e:                           # noqa: BLE001
-            z.writestr("lean_minutes.error.txt", f"{type(e).__name__}: {e}")
-    return buf.getvalue()
+    """L13: the day's recorded data as a zip (v0.27.1: built in core/ship.py, shared with the GitHub send)."""
+    from core import ship as SH
+    return SH.day_zip(rec)
 
 
 def _walk(repo, path: str) -> list[str]:
@@ -271,6 +248,20 @@ def day_data():
         if st.session_state.get("dl_zip"):
             c2.download_button(f"⬇ download ({len(st.session_state['dl_zip']) / 1e6:.1f} MB)", st.session_state["dl_zip"],
                                file_name=f"trishula_day_{now_et():%Y%m%d_%H%M}.zip", mime="application/zip", key="dl_zip_btn")
+        from core import ship as SH
+        g1, g2 = st.columns([1, 3])
+        if g1.button("📤 send today to GitHub", key="ship_btn", disabled=not ST.status["configured"],
+                     help="uploads this zip to the repo's Releases (data-YYYY-MM-DD) so Claude can pull it — "
+                          "also sent automatically at 16:05 ET; the newest 10 days are kept"):
+            with st.spinner("zipping + uploading…"):
+                try:
+                    SH.send(rec)
+                except Exception:                        # noqa: BLE001 — shown below
+                    pass
+        g2.caption(("sent " + SH.status["last"] if SH.status["last"] else "not sent this session")
+                   + (f" · {SH.status['pruned']}" if SH.status.get("pruned") else "")
+                   + (f" · ⚠ {SH.status['error']}" if SH.status.get("error") else "")
+                   + ("" if ST.status["configured"] else " · needs GITHUB_STATE_TOKEN"))
         st.markdown("**Past sessions** (saved at each flush and at the 16:15 roll — gone after a reboot)")
         past_sessions()
 
