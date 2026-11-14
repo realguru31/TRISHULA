@@ -4,6 +4,7 @@ Deployed: **v0.17.0**. Nothing gets built until the user types **APPROVE**. Depl
 Rules unchanged: whole zip every time (delete trishula/ → unzip → commit → Reboot app) · version on screen + CHANGELOG ·
 secrets only in Streamlit · one repo, no GitHub tokens · Colab scripts outside the repo, both tokens prefilled.
 
+## ✅ BUILT v0.28.0 (APPROVE 14 Nov 03:52 ET): SPXO/AM split (SPXW-only 0/1DTE, AM in book to 09:30) + real expiry times (13:00 half days) · CLEAN-B dealer sign −(nc+np) · TASTIER surfaces by strike with pre-open sign
 ## ✅ BUILT v0.27.1 (APPROVE 12 Nov 21:52 Doha): day zip → GitHub Release data-YYYY-MM-DD (auto 16:05 ET + 📤 button), keep newest 10 days · pushed directly to GitHub by Claude
 ## ✅ BUILT v0.27.0 (APPROVE 12 Nov 12:17 ET): Book levels = Dan's Test/Anchor (opening position, contracts, spot ± 1× straddle, cluster peaks, 3-rung ladder, acceptance described not decided) · lock 09:25 ET with OI-stale guard · Terrain defaults (Dan, single-leg, vw 0.05, book 0.35) kept in URL · Terrain cache key incl. book expiries
 ## QUEUED (not approved): Terrain max/min line detection + wider price range · signed long-dated book from daily candle bid/ask (naive fallback) · charm below spot check

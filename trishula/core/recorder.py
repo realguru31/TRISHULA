@@ -249,7 +249,12 @@ class Recorder:
         self.state = "authenticating"
         sess = Session(self.cs, self.rt)
         self.state = "loading chain"
-        chain = await get_option_chain(sess, "SPX")
+        chain_all = await get_option_chain(sess, "SPX")
+        from . import expiry as EX                          # v0.28.0: SPXW (PM) vs SPX monthly / SPXO (AM) split
+        EX.register(chain_all)
+        self._chain_all = chain_all                         # every root — the long-dated book picks AM contracts here
+        chain = {d: [o for o in opts if EX.is_pm(o)] for d, opts in chain_all.items()}
+        chain = {d: v for d, v in chain.items() if v}       # PM only: 0DTE / 1DTE, extra expiries, sessions
         n = now_et()
         today = n.date()
         exps = sorted(d for d in chain if d > today or (d == today and n.time() < ROLL_TIME))
@@ -369,21 +374,34 @@ class Recorder:
     # ── v0.26.0 long-dated book: OI + greeks only (no prints, no quotes, not in legs/snapshots) ──
     def _book_pick(self, spot: float) -> dict:
         from datetime import date as _d
-        today = now_et().date(); out = {}
+        from . import expiry as EX
+        now_n = now_et().replace(tzinfo=None)
+        today = now_n.date(); out = {}
         skip = {str(e) for e in (self.exps or [])[:2]}
-        for d, opts in (self._chain or {}).items():
-            es = str(d); days = (d - today).days
-            if es in skip or days < 0 or days > BOOK_DAYS:
+        for d, opts_all in (getattr(self, "_chain_all", None) or self._chain or {}).items():
+            days = (d - today).days
+            if days < 0 or days > BOOK_DAYS:
                 continue
-            typ = str(self.exp_types.get(es, "")).lower()
-            if not (days <= BOOK_WEEKLY_DAYS or any(t in typ for t in BOOK_TYPES)):
-                continue
+            for pm in (True, False):                    # v0.28.0: PM (SPXW) and AM (SPX monthly / SPXO) separately
+                opts = [o for o in opts_all if EX.is_pm(o) == pm]
+                if not opts:
+                    continue
+                es = EX.label(d, pm)
+                if es in skip or EX.end(es) <= now_n:   # AM settled at today's open → gone
+                    continue
+                typ = str(getattr(opts[0], "expiration_type", "") or "").lower()
+                if not (days <= BOOK_WEEKLY_DAYS or any(t in typ for t in BOOK_TYPES)):
+                    continue
+                self._book_add(out, opts, es, spot)
+        return out
+
+    @staticmethod
+    def _book_add(out, opts, es, spot):
             for o in opts:
                 k = float(o.strike_price)
                 if abs(k / spot - 1) <= BOOK_BAND and abs(k / BOOK_STEP - round(k / BOOK_STEP)) < 1e-9:
                     cp = 1 if str(o.option_type.value).upper().startswith("C") else -1
                     out[o.streamer_symbol] = (es, k, cp)
-        return out
 
     async def _book_subscribe(self, s, Greeks, Summary):
         """Subscribe the long-dated book once per session (after the seed has settled). Greeks / Summary events
@@ -421,11 +439,15 @@ class Recorder:
         bl = dict(getattr(self, "book_legs", {}) or {})
         if not bl:
             return pd.DataFrame(columns=["sym", "exp", "strike", "cp", "type", "iv", "gamma", "oi", "volume"])
+        from . import expiry as EX
         live = {str(e) for e in (self.exps or [])} | set(getattr(self, "_subscribed", set()))
+        now_n = now_et().replace(tzinfo=None)
         rows = []
         for sym, (es, k, cp) in bl.items():
             if es in live:
                 continue                                         # already in the main chain (tape-signed)
+            if EX.end(es) <= now_n:
+                continue                                         # v0.28.0: AM contracts drop out at their 09:30 settle
             g = self.greeks.get(sym); oi = self.oi.get(sym)
             if not g or oi is None or not oi == oi or oi <= 0:
                 continue

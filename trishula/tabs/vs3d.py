@@ -351,6 +351,9 @@ def build_read(rec, exps, ts_ms):
         hdr = "PREVIEW — opening position (yesterday's flow on today's OI) · locks at first ≥09:25 ET snapshot"
     elif D.oi_stale_note(rec, day):
         hdr = "PREVIEW — " + D.oi_stale_note(rec, day)
+    _am = D.am_note(rec, spot) if is_today else ""        # v0.28.0: SPXO / SPX AM settling at the next open
+    if _am:
+        hdr = (hdr + " · " if hdr else "") + _am
     kw = dict(ref_spot=ref, open_strad=o_str, lock=(lock or {}).get("levels"), status_prices=status, header_note=hdr,
               seed_rows=seed_rows)
     card_png = B.method_card_jpg(B.key_levels_lines(flow_rows, spot, strad_now, "k", "g", "r", "c", "d", "y", **kw))
@@ -986,7 +989,8 @@ def build_dt2(rec, exps, ts_ms, alpha, floor, prox, watch, cool, need, mode="0DT
         ivs = pd.to_numeric(ch.get("iv"), errors="coerce") if "iv" in ch else pd.Series(dtype=float)
         near = (ch["strike"] - spot_now).abs() <= 25 if spot_now == spot_now else ch["strike"] == ch["strike"]
         iv = float(np.nanmedian(ivs[near])) if ivs is not None and len(ivs) and np.isfinite(ivs[near]).any() else 0.16
-        gex = V.gex_path(legs, spot, dt.datetime.combine(day, dt.time(16, 0)), float(np.clip(iv, 0.05, 1.0)))
+        from core import expiry as EX
+        gex = V.gex_path(legs, spot, EX.end(day), float(np.clip(iv, 0.05, 1.0)))
     card = V.scorecard({"follow": fo, "initiation": ini}, spot, gex)
     try:
         rec.ui_state.setdefault("_dt2_cards", {})[str(day)] = card.assign(day=str(day))

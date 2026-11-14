@@ -121,7 +121,8 @@ def _dash(rec, exp, legs, cfg, ridge):
     bk = F.buckets(d, bars, day, int(cfg["BucketMin"]), cw, pw)
     bk, fires = F.evaluate(bk, cfg)
     c1m = bars.rename(columns={"o": "open", "h": "high", "l": "low", "c": "close"})
-    session_over = now.date() > day or now.time() >= dt.time(16, 0)
+    from core import expiry as EX
+    session_over = now >= EX.end(day)
     sig = F.score(fires, c1m, cfg, session_over) if len(c1m) else F.score([], c1m, cfg, False)
     st.markdown(f"**{F.stats_line(sig, cfg)}**")
     st.caption(f"{exp} · {legs} legs · walls CW {cw or '—'} / PW {pw or '—'} (max OI ±{cfg['StrikesEachSide']} strikes) · "
@@ -394,7 +395,8 @@ def _heat_data(d, ch, spot, now, exp, day, n_each):
     g = F.heat_grid(d, day, strikes)
     if g is None:
         return None, None
-    expiry = dt.datetime.combine(dt.date.fromisoformat(exp), dt.time(16, 0))
+    from core import expiry as EX
+    expiry = EX.end(exp)
     proj = None
     if S.open_dt(day) <= now <= S.close_dt(day) and len(d):
         pz = d.assign(pz=-d["aggr"] * d["size"]).groupby("sym").agg(pos=("pz", "sum"), strike=("strike", "first")).reset_index()
@@ -412,7 +414,8 @@ def _v4(d, ch, spot, now, exp, day, bk, n_each):
     g = F.heat_grid(d, day, strikes)
     if g is None:
         return _empty(title, "no prints for this session yet", 420)
-    expiry = dt.datetime.combine(dt.date.fromisoformat(exp), dt.time(16, 0))
+    from core import expiry as EX
+    expiry = EX.end(exp)
     proj = None
     if S.open_dt(day) <= now <= S.close_dt(day) and len(d):
         pos = d.groupby("sym").agg(pos=("aggr", lambda a: 0.0), strike=("strike", "first")).reset_index()

@@ -22,6 +22,7 @@ neighbourhood is purple/pink, holding ≥ 3 buckets → listed and ringed.
 """
 from __future__ import annotations
 
+from . import expiry as EX                          # v0.28.0: real expiry times
 import numpy as np
 import pandas as pd
 from scipy.ndimage import gaussian_filter1d
@@ -47,7 +48,7 @@ def greek_field(legs: pd.DataFrame, S: pd.Series, expiry: pd.Timestamp, model: s
     has_exp = "exp" in legs.columns
     for r in legs.itertuples():
         if has_exp and isinstance(r.exp, str):           # v0.19.1 L41: each leg with its OWN time to expiry (0+1DTE)
-            ex_ = pd.Timestamp(f"{r.exp} 16:00")
+            ex_ = pd.Timestamp(EX.end(r.exp))
             T = np.maximum((ex_ - idx).total_seconds() / (365 * 24 * 3600), 1 / (365 * 24 * 12))
         else:
             T = T0
@@ -89,7 +90,7 @@ def price_grid_field(legs: pd.DataFrame, S: pd.Series, grid, overlay: pd.DataFra
     if legs.empty or not len(P):
         return pd.DataFrame()
     K = legs["strike"].values.astype(float)
-    exp_end = np.array([pd.Timestamp(f"{e} 16:00").value for e in legs["exp"]], dtype=np.int64)
+    exp_end = np.array([pd.Timestamp(EX.end(e)).value for e in legs["exp"]], dtype=np.int64)
     iv0 = pd.to_numeric(legs["iv"], errors="coerce").values
     iv0 = np.where((iv0 > 0) & np.isfinite(iv0), iv0, 0.18)
     oi = pd.to_numeric(legs["oi"], errors="coerce").fillna(0.0).values

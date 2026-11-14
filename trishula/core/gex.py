@@ -12,8 +12,8 @@ from .timeutil import ET
 
 def years_to_expiry(exp: str, at_ms: int) -> float:
     """Year fraction from at_ms to 16:00 ET on exp, floored at 1 hour."""
-    end = datetime.combine(datetime.fromisoformat(exp).date(), time(16, 0), tzinfo=ET)
-    t = (end.timestamp() * 1000 - at_ms) / (365 * 24 * 3600 * 1000)
+    from . import expiry as EX                      # v0.28.0: real expiry time
+    t = (EX.end_ms(exp) - at_ms) / (365 * 24 * 3600 * 1000)
     return max(t, 1 / (365 * 24))
 
 
@@ -34,7 +34,8 @@ _END_MS: dict = {}
 def _exp_end_ms(exp: str) -> float:
     v = _END_MS.get(exp)
     if v is None:
-        v = _END_MS[exp] = datetime.combine(datetime.fromisoformat(str(exp)).date(), time(16, 0), tzinfo=ET).timestamp() * 1000
+        from . import expiry as EX
+        v = _END_MS[exp] = float(EX.end_ms(exp))
     return v
 
 

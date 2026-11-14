@@ -112,7 +112,8 @@ def _draw(rec, ctl):
     if have:
         try:
             ds = rec.dsign_table(exp)
-            ch = ch.drop(columns=["dsign"], errors="ignore").merge(ds[["sym", "dsign"]], on="sym", how="left")
+            ch = (ch.drop(columns=["dsign", "seed_dsign"], errors="ignore")
+                  .merge(ds[["sym", "dsign", "seed_dsign"]], on="sym", how="left"))   # v0.28.0: seed sign for surfaces
         except Exception:                                   # noqa: BLE001
             ch["dsign"] = np.nan
     ss = st.session_state
@@ -205,13 +206,15 @@ def _draw(rec, ctl):
     except Exception:                                            # noqa: BLE001
         c1t = None
     if c1t is not None and len(c1t) and spot == spot and ch is not None and len(ch):
-        lg = ch.drop_duplicates("sym")[[c_ for c_ in ("sym", "strike", "cp", "oi", "iv", "dsign") if c_ in ch]]
+        lg = ch.drop_duplicates("sym")[[c_ for c_ in ("sym", "strike", "cp", "oi", "iv", "dsign", "seed_dsign") if c_ in ch]]
         t_end = pd.Timestamp(bars["t"].max()) if bars is not None and len(bars) else pd.Timestamp(S.close_dt(day))
-        keyt = ("tsurf2", exp, beta, len(c1t), t_end.floor("5min"), round(spot - half), round(spot + half), S.gth())
+        keyt = ("tsurf3", exp, beta, len(c1t), t_end.floor("5min"), round(spot - half), round(spot + half), S.gth())
         cache = rec.ui_state.setdefault("_tsurf", {})
         if keyt not in cache:
             cache.clear()
-            cache[keyt] = DL.surfaces_tape(lg, c1t, pd.Timestamp(S.open_dt(day)), t_end, exp, beta, spot - half, spot + half)
+            spm = (bars.set_index("t")["c"] if bars is not None and len(bars) else pd.Series([spot], index=[t_end]))
+            cache[keyt] = DL.surfaces_strike(lg, c1t, pd.Timestamp(S.open_dt(day)), t_end, exp, beta,
+                                             spot - half, spot + half, spm)        # v0.28.0: by strike (Tastier)
         surf = cache[keyt]
     if surf is None and len(hist) and spot == spot:
         key = ("tsurf", exp, beta, int(hist["ts_ms"].max()) // 300_000, round(spot - half), round(spot + half), S.gth())
@@ -468,9 +471,10 @@ def _dv_panel(g, spot):
 
 def _surface_panel(surf, kind, bars, beta):
     b_ = " (β)" if beta else " (naive)"
-    t = ("SPX vanna surface · dealer Δ per +1 vol by price" + b_ if kind == "vanna"
-         else "SPX Δ today · dealer γ ADDED (+) / REMOVED (−) by today's flow" + b_ if kind == "dgamma"
-         else "SPX flow-adjusted gamma surface · dealer γ by price" + b_)
+    _ax = "strike" if (surf is not None and surf.get("axis") == "strike") else "price"
+    t = (f"SPX vanna surface · dealer Δ per +1 vol by {_ax}" + b_ if kind == "vanna"
+         else f"SPX Δ today · dealer γ ADDED (+) / REMOVED (−) by today's flow, by {_ax}" + b_ if kind == "dgamma"
+         else f"SPX flow-adjusted gamma surface · dealer γ by {_ax}" + b_)
     if surf is not None:
         t += " · from 1-min candles (survives reboots)" if surf.get("source") == "tape" else " · from chain snapshots"
     if surf is None:
@@ -484,19 +488,22 @@ def _surface_panel(surf, kind, bars, beta):
     cs = ([[0, "#1e6fb8"], [0.5, "#0b0f14"], [1, "#f0a020"]] if kind == "vanna"
           else [[0, "#b64bff"], [0.5, "#0b0f14"], [1, "#2ecc71"]] if kind == "dgamma"
           else [[0, "#d1263a"], [0.45, "#3a0d18"], [0.5, "#0b0f14"], [0.55, "#0d2a5a"], [1, "#2f8bff"]])
+    by_k = surf.get("axis") == "strike"
     f = go.Figure(go.Heatmap(z=Z, x=surf["t"], y=surf["P"], zmin=-q, zmax=q, colorscale=cs, showscale=False,
-                             zsmooth="best", hovertemplate="%{y:,.0f} · %{x|%H:%M}<br>%{z:.3s}<extra></extra>"))
-    # 0γ flip line through time (from the gamma surface)
-    G = surf["gamma"]
+                             zsmooth=False if by_k else "best", ygap=1 if by_k else 0,
+                             hovertemplate=("strike " if by_k else "") + "%{y:,.0f} · %{x|%H:%M}<br>%{z:.3s}<extra></extra>"))
+    # 0γ flip line through time (total dealer γ by price; the strike view keeps a 2-pt price grid for it)
+    G, PG = (surf["gamma_grid"], surf["Pgrid"]) if by_k else (surf["gamma"], surf["P"])
     flips = []
     for j in range(G.shape[1]):
         col = G[:, j]; s = np.sign(col); ix = np.where(np.diff(s) != 0)[0]
-        flips.append(float(surf["P"][ix[np.argmin(np.abs(ix - len(col) / 2))]]) if len(ix) else np.nan)
+        flips.append(float(PG[ix[np.argmin(np.abs(ix - len(col) / 2))]]) if len(ix) else np.nan)
     f.add_scatter(x=surf["t"], y=flips, mode="lines", line=dict(color=PURPLE, width=1.4, dash="dash"), name="0γ flip")
     if bars is not None and len(bars):
         bb = bars[(bars["t"] >= surf["t"][0])]
         f.add_candlestick(x=bb["t"], open=bb["o"], high=bb["h"], low=bb["l"], close=bb["c"], name="SPX",
                           increasing_line_color=GREEN, decreasing_line_color=RED)
     f.update_layout(xaxis_rangeslider_visible=False)
-    f.update_yaxes(range=[float(surf["P"][0]), float(surf["P"][-1])], side="right")
+    _pad = 2.5 if by_k else 0.0
+    f.update_yaxes(range=[float(surf["P"][0]) - _pad, float(surf["P"][-1]) + _pad], side="right")
     return _style(f, t, 460)

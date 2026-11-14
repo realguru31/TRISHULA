@@ -486,3 +486,28 @@ def tv_line(day, spot, lock, main_preview, clk, clean_preview_lv, flow_rows, cle
     parts.append("Q:" + prof((clk or {}).get("profile") or rows_pairs(clean_rows)))
     return "|".join(parts)
 
+
+def am_note(rec, spot) -> str:
+    """v0.28.0: AM-settled contracts (SPXO weekly, SPX monthly) that settle at the NEXT open — dealers carry their
+    risk through tonight's close. OI within ±2 % of spot, by root. '' when none / not live."""
+    try:
+        from . import expiry as EX
+        from .timeutil import now_et
+        bf = rec.book_frame() if hasattr(rec, "book_frame") else None
+        if bf is None or bf.empty or not spot == spot:
+            return ""
+        now_n = now_et().replace(tzinfo=None)
+        am = bf[bf["exp"].astype(str).str.endswith("AM")].copy()
+        if am.empty:
+            return ""
+        am["end"] = am["exp"].map(EX.end)
+        am = am[(am["end"] > now_n) & (am["end"] - now_n <= pd.Timedelta(hours=26)) & ((am["strike"] / spot - 1).abs() <= 0.02)]
+        if am.empty:
+            return ""
+        am["root"] = am["sym"].map(EX.root_of)
+        parts = [f"{r} OI {g['oi'].sum():,.0f} (calls {g.loc[g['cp'] > 0, 'oi'].sum():,.0f} / puts {g.loc[g['cp'] < 0, 'oi'].sum():,.0f})"
+                 for r, g in am.groupby("root")]
+        return f"AM-settled at {am['end'].min():%a} 09:30 open, ±2 % of spot: " + " · ".join(parts)
+    except Exception:                                          # noqa: BLE001
+        return ""
+

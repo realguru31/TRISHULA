@@ -71,7 +71,8 @@ def bs_color(S, K, T, sig, r=0.0):
 
 
 def _T_at(es, ts):
-    exp = dt.datetime.combine(dt.datetime.strptime(es, "%Y-%m-%d").date(), dt.time(16, 0))
+    from . import expiry as EX                      # v0.28.0: SPXW stop time / AM 09:30 settle
+    exp = EX.end(es)
     return max((exp - ts).total_seconds(), 60.) / (365 * 24 * 3600)
 
 

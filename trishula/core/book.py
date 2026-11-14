@@ -83,7 +83,9 @@ def _per_strike(ds, which):
 
 
 def cleanB_rows(ds_single, which="seed"):
-    """CLEAN-B: net single-leg paper per strike, DEALER view = −(n_call − n_put)."""
+    """CLEAN-B: net single-leg paper per strike, DEALER POSITION = −(n_call + n_put) contracts.
+    v0.28.0: was −(n_call − n_put) — a direction (bull/bear) number that showed customer-bought puts as dealer LONG.
+    A customer buying a call OR a put leaves the dealer SHORT that contract."""
     m = _per_strike(ds_single, which)
     rows = []
     for k, v in m.items():
@@ -91,7 +93,7 @@ def cleanB_rows(ds_single, which="seed"):
         pc, tp = v.get("put", (0.0, 0.0))
         if (tc + tp) <= 0:
             continue
-        rows.append((float(k), -(float(nc) - float(pc)), 1.0))
+        rows.append((float(k), -(float(nc) + float(pc)), 1.0))
     return pd.DataFrame(rows, columns=["strike", "signed_pct", "conf"]) if rows else None
 
 
@@ -640,7 +642,8 @@ def compute_strip(cc, sp, ts: dt.datetime, charm_hist=(), fuel0=None, strad_tape
     if tt < dt.time(10, 0) or len(_rth) < 4:
         strad_cls, strad_col = "ARMED (from 10:00)", "#8a93a6"
     else:
-        _t16s = dt.datetime.combine(ts.date(), dt.time(16, 0))
+        from . import expiry as EX
+        _t16s = EX.end(ts.date())                        # v0.28.0: 13:00 on half days
         _a0 = _rth[0]
 
         def _fr(t):
@@ -695,7 +698,8 @@ def compute_strip(cc, sp, ts: dt.datetime, charm_hist=(), fuel0=None, strad_tape
 
 
 def charm_of(cc, sp, ts, eff, w):
-    _t16 = dt.datetime.combine(ts.date(), dt.time(16, 0))
+    from . import expiry as EX
+    _t16 = EX.end(ts.date())                                # v0.28.0: 13:00 on half days
     _Ty = max((_t16 - ts).total_seconds(), 60) / (365 * 24 * 3600)
 
     def _charm5m(K, iv):

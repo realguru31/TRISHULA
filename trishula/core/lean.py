@@ -78,7 +78,8 @@ def minutes(rec, exps: list[str]) -> pd.DataFrame:
             dl = np.abs(new["delta"].values.astype(float))
             miss = ~np.isfinite(dl)
             if miss.any():
-                cl = {e: pd.Timestamp(f"{e} 16:00").tz_localize("America/New_York").value // 10 ** 6 for e in set(ex[miss])}
+                from . import expiry as EX
+                cl = {e: EX.end_ms(e) for e in set(ex[miss])}
                 close = pd.Series(ex[miss]).map(cl).values.astype(float)
                 tyr = (close - new["ts_ms"].values[miss]) / (365.25 * 86400e3)
                 dl[miss] = _bs_delta(spot[miss], new["strike"].values.astype(float)[miss], tyr, cp[miss])

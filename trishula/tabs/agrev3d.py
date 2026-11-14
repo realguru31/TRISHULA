@@ -132,7 +132,8 @@ def tetris_build(rec, exp, day, asof_ms, ks, bars, mt, model, palette, overlay, 
         if len(m):
             ov = (m.assign(b=m["m"].dt.floor(TT.BUCKET)).pivot_table(index="b", columns="sym", values="size", aggfunc="sum")
                   .reindex(idx).fillna(0.0).cumsum())
-    expiry = pd.Timestamp(dt.datetime.combine(dt.date.fromisoformat(exp), dt.time(16, 0)))
+    from core import expiry as EX
+    expiry = pd.Timestamp(EX.end(exp))
     M = TT.greek_field(L, Sb, expiry, model, ov, ivp, oip)
     if M.empty:
         return None

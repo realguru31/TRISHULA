@@ -26,7 +26,8 @@ YEAR = 365 * 24 * 3600.0
 
 
 def _t_years(exp: str, now: pd.Timestamp) -> float:
-    end = pd.Timestamp(f"{exp} 16:00")
+    from . import expiry as EX                      # v0.28.0: real expiry time (half days 13:00, AM 09:30)
+    end = pd.Timestamp(EX.end(exp))
     return max((end - now).total_seconds() / YEAR, 60 / YEAR)
 
 
@@ -177,6 +178,73 @@ def surfaces(hist: pd.DataFrame, exp: str, beta: bool, lo: float, hi: float, ste
     if not ts_l:
         return None
     return dict(t=ts_l, P=P, gamma=np.array(G).T, vanna=np.array(V).T)
+
+
+def surfaces_strike(legs: pd.DataFrame, c1: pd.DataFrame, t0: pd.Timestamp, t1: pd.Timestamp, exp: str, beta: bool,
+                    lo: float, hi: float, spot_by_min: pd.Series, every_min: int = 5):
+    """v0.28.0 — TASTIER surfaces BY STRIKE (the Tastier layout: bright bands at the big strikes).
+    For every bucket t: dealer position per contract q(t) = pre-open sign × morning OI − contracts customers bought net
+    since the open (ask − bid volume from the 1-min candles, up to t). Plotted per strike: that strike's dealer γ and
+    vanna at SPX(t) — so a strike lights up where dealers hold size AND it is near enough to price to matter.
+    The pre-open sign (seed_dsign) is used for the start position so today's flow is counted ONCE (v0.19.3 used the
+    live sign, which already contains today's flow, and then subtracted today's flow again).
+    Also returns the price-grid total γ (2-pt grid) for the 0γ flip line.
+    legs: sym, strike, cp, oi, iv, seed_dsign (beta) · c1: m, sym, bidv, askv (, iv) · spot_by_min: SPX close by minute."""
+    if legs is None or legs.empty or c1 is None or c1.empty or spot_by_min is None or not len(spot_by_min):
+        return None
+    L = legs.dropna(subset=["strike"]).drop_duplicates("sym").reset_index(drop=True)
+    L["oi"] = pd.to_numeric(L["oi"], errors="coerce").fillna(0.0)
+    L["iv"] = pd.to_numeric(L["iv"], errors="coerce")
+    L["iv"] = L["iv"].where(L["iv"] > 0, L.groupby("cp")["iv"].transform("median")).fillna(0.2)
+    idx = pd.date_range(pd.Timestamp(t0).floor(f"{every_min}min"), pd.Timestamp(t1).floor(f"{every_min}min"),
+                        freq=f"{every_min}min")
+    if len(idx) < 2:
+        return None
+    c = c1[c1["sym"].astype(str).isin(set(L["sym"])) & (c1["m"] >= t0) & (c1["m"] <= t1)].copy()
+    c["sym"] = c["sym"].astype(str)
+    c["b"] = c["m"].dt.floor(f"{every_min}min")
+    c["net"] = c["askv"].fillna(0) - c["bidv"].fillna(0)
+    net = (c.pivot_table(index="b", columns="sym", values="net", aggfunc="sum", observed=True).reindex(idx).fillna(0.0)
+           .cumsum().reindex(columns=L["sym"]).fillna(0.0).values)
+    if "iv" in c and c["iv"].notna().any():
+        ivp = (c.pivot_table(index="b", columns="sym", values="iv", aggfunc="last", observed=True).reindex(idx).ffill()
+               .reindex(columns=L["sym"]).values)
+    else:
+        ivp = np.full((len(idx), len(L)), np.nan)
+    if beta:
+        sd = pd.to_numeric(L["seed_dsign"], errors="coerce").values if "seed_dsign" in L else np.full(len(L), np.nan)
+        naive = np.where(L["cp"].values == 1, 1.0, -1.0)
+        sg = np.where(np.isfinite(sd), sd, naive * 0.2)
+    else:
+        sg = np.where(L["cp"].values == 1, 1.0, -1.0)
+    base = sg * L["oi"].values
+    sp = pd.Series(spot_by_min).sort_index()
+    sp = sp[~sp.index.duplicated(keep="last")].reindex(idx, method="ffill").bfill().values
+    Kv = L["strike"].values
+    ks = np.unique(Kv[(Kv >= lo) & (Kv <= hi)])
+    if not len(ks):
+        return None
+    col = pd.Index(ks).get_indexer(Kv)                      # leg → strike row (−1 = outside the window)
+    inside = col >= 0
+    P = np.arange(lo, hi + 2.0, 2.0)
+    G, V, DG = (np.zeros((len(ks), len(idx))) for _ in range(3))
+    GP = np.zeros((len(P), len(idx)))
+    for j, t in enumerate(idx):
+        S = float(sp[j])
+        if not S == S:
+            continue
+        T = _t_years(exp, t)
+        iv = np.where(np.isfinite(ivp[j]) & (ivp[j] > 0), ivp[j], L["iv"].values)
+        q = base - net[j]
+        g = _gamma(np.array([S]), Kv, T, iv) * 100 * S * S * 0.01            # $ γ per 1 % move, per contract
+        va = _vanna(np.array([S]), Kv, T, iv) * 0.01 * 100 * S                # $ Δ per +1 vol, per contract
+        G[:, j] = np.bincount(col[inside], weights=(g * q)[inside], minlength=len(ks))
+        V[:, j] = np.bincount(col[inside], weights=(va * q)[inside], minlength=len(ks))
+        DG[:, j] = np.bincount(col[inside], weights=(g * -net[j])[inside], minlength=len(ks))
+        gp = _gamma(P[:, None], Kv[None, :], T, iv[None, :]) * 100 * (P ** 2)[:, None] * 0.01
+        GP[:, j] = (gp * q[None, :]).sum(axis=1)
+    return dict(t=list(idx), P=ks.astype(float), gamma=G, vanna=V, dgamma=DG, Pgrid=P, gamma_grid=GP,
+                spot=sp, source="tape", axis="strike")
 
 
 def surfaces_tape(legs: pd.DataFrame, c1: pd.DataFrame, t0: pd.Timestamp, t1: pd.Timestamp, exp: str, beta: bool,

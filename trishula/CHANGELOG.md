@@ -3,6 +3,25 @@
 Semantic versioning: MAJOR.MINOR.PATCH. The running version is shown in the app's
 status bar, every tab footer, and the Recorder diagnostics panel.
 
+## v0.28.0 — 2026-11-14 · SPXO / AM split + real expiry times · CLEAN-B dealer sign · TASTIER surfaces by strike
+- **SPXO / SPX AM monthlies (core/expiry.py):** tastytrade lists every root expiring on a date in one list, and TRISHULA
+  mixed them (Colab check 14 Nov: Wed 18 Nov = SPXO AM + SPXW PM; Fri 20 Nov = SPX AM monthly + SPXW; same 16 Dec,
+  18 Dec, 15 Jan). Now:
+  - 0DTE / 1DTE recording, snapshots, Book, Lean, TASTIER, extra expiries: **SPXW (PM) only**.
+  - AM contracts (SPXO weekly, SPX monthly) go to the long-dated book / Terrain as their own expiry `YYYY-MM-DDAM`,
+    expiring **09:30 ET** on their date; they count up to the settle and drop out at the open.
+  - Book header on the day before an AM settle: "AM-settled at <day> 09:30 open, ±2 % of spot: SPXO OI … · SPX OI …".
+- **Real expiry times everywhere** (were hard-coded 16:00 in dealer, terrain, gex, tetris, lean, book, AG-REV, VS3D):
+  each PM expiry ends at the chain's stops_trading_at — **13:00 ET on the half days 27 Nov and 24 Dec** — so charm,
+  gamma and time-to-close are right on those days.
+- **CLEAN-B (single-leg Book) dealer sign fixed:** was −(net calls − net puts), a bull/bear direction number that showed
+  customer-bought puts as dealer LONG. Now dealer position = −(net calls + net puts). Feeds the CLEAN-B 09:25 lock and
+  the NinjaTrader clean levels. (12 Nov 11:36 replay: UP 7660 · BAL 7625 · DN 7605 with price pinned 7625–7635.)
+- **TASTIER gamma + vanna surfaces by STRIKE** (the Tastier layout, bright bands at the big strikes): every 5 min, each
+  strike's dealer γ / vanna at that moment's SPX price; flip line from the total γ by price. The start position now uses
+  the PRE-OPEN sign × morning OI, then today's customer flow once (v0.19.3 used the live sign, which already contained
+  today's flow, then subtracted it again → one solid colour).
+
 ## v0.27.1 — 2026-11-12 · Day data → GitHub Releases (so Claude can pull it)
 - New core/ship.py: the "📦 prepare today's data" zip is uploaded to a **GitHub Release** on this repo, tag
   `data-YYYY-MM-DD` (tagged on the trishula-state branch, pre-release, never "latest"). Release files are not in the
