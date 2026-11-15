@@ -4,6 +4,7 @@ Deployed: **v0.17.0**. Nothing gets built until the user types **APPROVE**. Depl
 Rules unchanged: whole zip every time (delete trishula/ → unzip → commit → Reboot app) · version on screen + CHANGELOG ·
 secrets only in Streamlit · one repo, no GitHub tokens · Colab scripts outside the repo, both tokens prefilled.
 
+## ✅ BUILT v0.30.2 (APPROVE 15 Nov 14:36 ET): model charts widened to the furthest live bid
 ## ✅ BUILT v0.30.1 (APPROVE 15 Nov 14:17 ET): new edge_model (safest), SAFEST lines + rows, script-style charts (bid dots, 50¢ cap), % + ×/yr probability
 ## ✅ BUILT v0.30.0 (APPROVE 15 Nov 13:49 ET): edge_model.py unchanged + Run model button on SPX BB (button-only, Yahoo history)
 ## ✅ BUILT v0.29.0 (APPROVE 15 Nov 13:21 ET): SPX BB tab — 0.05-bid edges 0DTE/1DTE (own 21:00 roll), sold-strike buffers, Telegram alerts (threshold 5–50, ratchet), full-chain quotes

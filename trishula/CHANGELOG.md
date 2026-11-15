@@ -3,6 +3,11 @@
 Semantic versioning: MAJOR.MINOR.PATCH. The running version is shown in the app's
 status bar, every tab footer, and the Recorder diagnostics panel.
 
+## v0.30.2 — 2026-11-15 · SPX BB model charts reach the furthest live bid
+- Each model chart's strike range now always includes the furthest live bid (the 0.05 call / put edge at the press)
+  as well as SAFEST / 2nd SAFEST; before, display_window alone could stop short of it (calls ended ~7,975 while
+  the 0.05 edge was 8,025). Blank-bid strikes still aren't drawn. Button-only rules unchanged.
+
 ## v0.30.1 — 2026-11-15 · SPX BB edge model: SAFEST lines, readable charts, % probability
 - core/edge_model.py replaced with the user's new version, unchanged (sha256 9034b9c0…) — adds run.safest().
 - SAFEST / 2nd SAFEST for puts and calls (run.safest): rows in the table (strike, historical move + date, bid at

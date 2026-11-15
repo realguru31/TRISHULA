@@ -166,9 +166,10 @@ def _model_block(trk: BB.Tracker):
             # x = run.display_window (from where expected loss comes down to 50¢ out to where it fades);
             # y capped at 50¢ — the same view as the edge script. Blank bids are simply not drawn.
             lo, hi = m["win"][side]
-            for r in m.get("safe", []):
-                if r["side"] == side:
-                    lo, hi = min(lo, r["strike"] - 15), max(hi, r["strike"] + 15)
+            keep = [r["strike"] for r in m.get("safe", []) if r["side"] == side]
+            keep += [r["strike"] for r in m["key"] if r["side"] == side and r["row"].endswith("edge")]
+            keep.append(float(d["strike"].min() if side == "put" else d["strike"].max()))   # furthest live bid
+            lo, hi = min([lo] + [k - 15 for k in keep]), max([hi] + [k + 15 for k in keep])
             d = d[(d["strike"] >= lo) & (d["strike"] <= hi)]
             i_ = m["run"].info
             fit = (i_.get(f"{side}_fit") or {}).get("formula", "")
