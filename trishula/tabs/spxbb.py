@@ -142,8 +142,6 @@ def _live(trk: BB.Tracker):
     with left:
         f = _fig("0.05-bid width (pts) — call edge − put edge")
         f.add_scatter(x=t, y=d["ce"] - d["pe"], mode="lines", line=dict(color="#ab47bc", width=2), name="width")
-        f.add_scatter(x=t, y=d["ce"] - d["spot"], mode="lines", line=dict(color=BLUE, width=1.4), name="call dist")
-        f.add_scatter(x=t, y=d["spot"] - d["pe"], mode="lines", line=dict(color=MAG, width=1.4), name="put dist")
         st.plotly_chart(f, width="stretch", key="bb_w")
     # ── right: furthest 0.05-bid strikes, bands spot → edge ────────────────────────
     with right:

@@ -3,6 +3,10 @@
 Semantic versioning: MAJOR.MINOR.PATCH. The running version is shown in the app's
 status bar, every tab footer, and the Recorder diagnostics panel.
 
+## v0.29.1 — 2026-11-15 · SPX BB width chart = one line
+- The 0.05-bid width chart shows only the width (call edge − put edge), as in the user's sheet; the call / put
+  distance lines are removed (distances are in the middle panel).
+
 ## v0.29.0 — 2026-11-15 · SPX BB tab (0.05-bid liquidity edges + Telegram)
 - New top-level tab **SPX BB** (tabs/spxbb.py, core/bb.py), laid out like the user's sheet:
   - toggle **0DTE · <date> / 1DTE · <date>** (EXPIRED shown after 16:00); SPX BB's own roll is **21:00 ET** — after
