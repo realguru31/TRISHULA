@@ -20,7 +20,7 @@ from core.view import view
 from core.recorder import Recorder
 from core.timeutil import now_et
 from core.version import LABEL, VERSION
-from tabs import agrev, tastier, vs3d
+from tabs import agrev, spxbb, tastier, vs3d
 
 logging.getLogger("tastytrade").setLevel(logging.WARNING)
 
@@ -100,6 +100,18 @@ def get_shipper(version: str):
 
 
 get_shipper(VERSION).start()
+
+
+@st.cache_resource(show_spinner=False)
+def get_bb(version: str):
+    """v0.29.0 SPX BB tracker: 0.05-bid edges every 15 s + Telegram (TG_BOT_TOKEN / TG_CHAT_ID from secrets)."""
+    from core.bb import Tracker
+    t = Tracker(rec, st.secrets.get("TG_BOT_TOKEN", ""), st.secrets.get("TG_CHAT_ID", ""))
+    rec._bb = t
+    return t.start()
+
+
+bb_trk = get_bb(VERSION).start()
 if feed is not None:
     feed.start()
 
@@ -167,10 +179,11 @@ ctl = control_bar(rec)          # common: expiry (0DTE/1DTE/Weekly/Monthly/Other
 pl = player_bar(rec)            # universal: refresh interval + replay player (all tabs)
 v = view(rec, pl["ts_ms"])      # live recorder, or an as-of view at the replay frame
 # lazy tabs: only the open tab computes (Streamlit ≥1.50 on_change="rerun" + .open)
-t1, t2, t3 = st.tabs(["TASTIER", "AG-REV", "VS3D"], key="main_tab", on_change="rerun")
+t1, t2, t3, t4 = st.tabs(["TASTIER", "AG-REV", "VS3D", "SPX BB"], key="main_tab", on_change="rerun")
 for t, name, fn in ((t1, "TASTIER", lambda: tastier.render(v, ctl)),
                     (t2, "AG-REV", lambda: agrev.render(v, ctl)),
-                    (t3, "VS3D", lambda: vs3d.render(v, ctl, pl["ts_ms"]))):
+                    (t3, "VS3D", lambda: vs3d.render(v, ctl, pl["ts_ms"])),
+                    (t4, "SPX BB", lambda: spxbb.render(bb_trk))):
     if t.open:
         with t:
             LD.begin(name + (" · replay frame" if pl["ts_ms"] else ""))

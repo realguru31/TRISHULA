@@ -3,6 +3,23 @@
 Semantic versioning: MAJOR.MINOR.PATCH. The running version is shown in the app's
 status bar, every tab footer, and the Recorder diagnostics panel.
 
+## v0.29.0 — 2026-11-15 · SPX BB tab (0.05-bid liquidity edges + Telegram)
+- New top-level tab **SPX BB** (tabs/spxbb.py, core/bb.py), laid out like the user's sheet:
+  - toggle **0DTE · <date> / 1DTE · <date>** (EXPIRED shown after 16:00); SPX BB's own roll is **21:00 ET** — after
+    the close "1DTE" stays tomorrow until 21:00 (the rest of TRISHULA still rolls at 16:15);
+  - C / P / R / W panel: call & put 0.05-bid edge, distance, % of spot, bid/ask; R = put dist ÷ call dist; W = width;
+    spot box (SPX, or the option-implied spot pre-market / after the close);
+  - your **sold C / sold P** inputs: buffer to the edge, live ask, distance from spot — green when your strike is
+    outside the last 0.05 bid, red when the edge has reached it;
+  - charts: 0.05-bid width; furthest 0.05-bid strikes with the **call band blue / put band magenta** shaded from spot
+    to the edge, alert markers, your sold strikes.
+- Recorder subscribes bid/ask on **every** 0DTE and 1DTE SPXW strike (the edges can be 600 pts out; legs are ±60).
+- Background tracker every 15 s, running pre-market and whenever the app is up. **Telegram**: an edge alerts when it is
+  ≥ threshold pts beyond the last alerted strike, away from spot (high-water mark, no repeats); one warning when an
+  edge reaches your sold strike. Threshold dropdown 5–50 (default 10), min bid, alerts on/off, 📨 test button.
+  No alerts on stale quotes or in the 09:15–09:30 gap. Settings + sold strikes saved to state/bb_config.json.
+- Secrets: **TG_BOT_TOKEN / TG_CHAT_ID** in Streamlit secrets only. Day zip gains spx_bb.json.
+
 ## v0.28.0 — 2026-11-14 · SPXO / AM split + real expiry times · CLEAN-B dealer sign · TASTIER surfaces by strike
 - **SPXO / SPX AM monthlies (core/expiry.py):** tastytrade lists every root expiring on a date in one list, and TRISHULA
   mixed them (Colab check 14 Nov: Wed 18 Nov = SPXO AM + SPXW PM; Fri 20 Nov = SPX AM monthly + SPXW; same 16 Dec,

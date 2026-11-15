@@ -56,6 +56,13 @@ def day_zip(rec) -> bytes:
         z.writestr("oi_log.json", json.dumps(oi))
         z.writestr("legs.json", json.dumps(legs))
         z.writestr("status.json", json.dumps(rec.status(), default=str))
+        try:                                             # v0.29.0: SPX BB edge series + alerts
+            trk = getattr(rec, "_bb", None)
+            if trk is not None:
+                z.writestr("spx_bb.json", json.dumps({"series": trk.series, "alerts": trk.alerts, "cfg": trk.cfg},
+                                                     default=str))
+        except Exception as e:                           # noqa: BLE001
+            z.writestr("spx_bb.error.txt", f"{type(e).__name__}: {e}")
         try:                                             # v0.24.0: lean minutes (single-leg + all, 0DTE/1DTE, $M Δ) + SPX 1m
             from . import lean as LN
             z.writestr("lean_minutes.json", json.dumps(LN.live_day(rec) or {}, default=float))
