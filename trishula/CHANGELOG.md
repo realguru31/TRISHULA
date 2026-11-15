@@ -3,6 +3,20 @@
 Semantic versioning: MAJOR.MINOR.PATCH. The running version is shown in the app's
 status bar, every tab footer, and the Recorder diagnostics panel.
 
+## v0.30.0 — 2026-11-15 · SPX BB: edge model (button only)
+- core/edge_model.py added **unchanged** (user's file, sha256 e2b752e9…). History from Yahoo via its own
+  load_history(); `yfinance` added to requirements.
+- Top of the SPX BB tab: **▶ Run model**. The model runs ONLY on that press — never in the 15-s tracker thread,
+  never on a rerun / auto-refresh / reload, never on a toggle change, no cache. On press: the toggle selected at that
+  moment, spot + source from rec.spot_now(), now_et without tzinfo → edge_model.run_model(...); stored in
+  st.session_state with a frozen snapshot of the bids, edges and sold strikes.
+- Shows: last-run line (time ET, toggle, spot + source, VIX + its date); call edge, put edge, sold C, sold P with
+  chance reached (1 in N), expected loss (¢), ratio after fees, cautious ratio; charts of expected loss vs bid for
+  every strike with a bid from spot to 20 % (x-axis zoomed with display_window, analysis covers the full 20 %), full
+  table in an expander; the open/close note. Results stay until the next press; if the toggle changes they stay,
+  labelled with the toggle they were run for.
+- A reload clears the results (st.session_state is per browser tab); it does not run the model.
+
 ## v0.29.1 — 2026-11-15 · SPX BB width chart = one line
 - The 0.05-bid width chart shows only the width (call edge − put edge), as in the user's sheet; the call / put
   distance lines are removed (distances are in the middle panel).

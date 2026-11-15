@@ -30,7 +30,134 @@ def _cell(txt, bg="transparent", fg="#e6edf3", bold=False, size="1.0em"):
             f"{'font-weight:700;' if bold else ''}'>{txt}</td>")
 
 
+MODEL_NOTE = ("0DTE figures are for selling around the open, 1DTE figures for selling around the close. "
+              "Later in the session the true risk is lower than shown.")
+
+
+def _run_model(trk: BB.Tracker):
+    """Runs ONLY from the Run model button (v0.30.0). Everything shown is frozen into session_state here."""
+    from core import edge_model as EM
+    mode = st.session_state.get("bb_mode", trk.cfg["mode"])
+    exp, expired = trk.exp_for(mode)
+    spot, src = trk.rec.spot_now()
+    if exp is None or not spot == spot:
+        st.session_state["bb_model"] = {"error": "no expiry or spot yet"}
+        return
+    run = EM.run_model(toggle=mode, spot=spot, now_et=now_et().replace(tzinfo=None), spot_source=src)
+    # bids snapshot at the press: every strike of that expiry with a bid, spot out to MAX_RANGE_PCT
+    lim = EM.MAX_RANGE_PCT / 100.0
+    rows = []
+    meta = dict(getattr(trk.rec, "bb_meta", {}) or {})
+    for _ in range(3):
+        try:
+            quotes = dict(trk.rec.quotes)
+            break
+        except RuntimeError:                            # the quote thread added a key mid-copy
+            continue
+    else:
+        quotes = {}
+    for sym, (ex, k, cp) in meta.items():
+        if ex != exp:
+            continue
+        q = quotes.get(sym)
+        if not q or not (q[0] == q[0]) or q[0] <= 0:
+            continue
+        side = "call" if cp > 0 else "put"
+        if (side == "call" and spot < k <= spot * (1 + lim)) or (side == "put" and spot * (1 - lim) <= k < spot):
+            rows.append(dict(run.price(side, k, q[0]), ask=q[1]))
+    tbl = pd.DataFrame(rows).sort_values(["side", "strike"]) if rows else pd.DataFrame()
+    e = trk.edges(exp, spot, float(trk.cfg["min_bid"])) or {}
+    key = []
+    for lab, side, k in (("Call edge", "call", (e.get("ce") or (None,))[0]),
+                         ("Put edge", "put", (e.get("pe") or (None,))[0]),
+                         ("Sold C", "call", float(trk.cfg.get("sold_call") or 0) or None),
+                         ("Sold P", "put", float(trk.cfg.get("sold_put") or 0) or None)):
+        if not k:
+            continue
+        b, a = trk.quote(exp, k, 1 if side == "call" else -1)
+        key.append(dict(run.price(side, k, b if b == b else 0.0), row=lab, ask=a))
+    st.session_state["bb_model"] = dict(run=run, mode=mode, exp=exp, spot=spot, src=src, table=tbl, key=key,
+                                        win={"put": run.display_window("put"), "call": run.display_window("call")})
+
+
+def _fmt(v, kind):
+    if v is None or not v == v:
+        return "—"
+    if kind == "one_in":
+        return "1 in ∞" if v == float("inf") else f"1 in {v:,.0f}" if v >= 10 else f"1 in {v:,.1f}"
+    if kind == "c":
+        return f"{v:,.2f}¢"
+    if kind == "r":
+        return f"{v:,.2f}"
+    return f"{v}"
+
+
+def _model_block(trk: BB.Tracker):
+    st.markdown("**Edge model** — expected loss of far-OTM strikes (runs only when you press the button)")
+    b1, b2 = st.columns([1, 6])
+    if b1.button("▶ Run model", key="bb_run"):
+        with st.spinner("running edge model (downloading SPX / VIX history from Yahoo, fitting)…"):
+            try:
+                _run_model(trk)
+            except Exception as ex:                     # noqa: BLE001
+                st.session_state["bb_model"] = {"error": f"{type(ex).__name__}: {str(ex)[:200]}"}
+    m = st.session_state.get("bb_model")
+    if not m:
+        b2.caption("not run yet")
+        return
+    if m.get("error"):
+        b2.error(f"model run failed — {m['error']}")
+        return
+    i = m["run"].info
+    cur = st.session_state.get("bb_mode", trk.cfg["mode"])
+    b2.caption(f"last run {i['run_at_et']} ET · **{i['toggle']}** · {dt.date.fromisoformat(m['exp']):%a %d %b} · "
+               f"spot {i['spot']:,.2f} ({i['spot_source'] or '?'}) · VIX {i['vix']:.2f} ({i['vix_date']})")
+    if cur != m["mode"]:
+        st.warning(f"These results were run for **{m['mode']}** — the toggle is now on {cur}. "
+                   "Press Run model to refresh.")
+    if m["key"]:
+        h = ("<table style='border-collapse:collapse;font-family:monospace'><tr>"
+             + "".join(f"<td style='color:#8b949e;padding:0 10px;text-align:right'>{c}</td>"
+                       for c in ("", "strike", "bid", "chance reached", "exp. loss", "ratio after fees", "cautious ratio"))
+             + "</tr>")
+        for r in m["key"]:
+            col = BLUE if r["side"] == "call" else MAG
+            ok = r.get("ratio") == r.get("ratio") and r.get("ratio", 0) >= 1
+            h += (f"<tr><td style='color:{col};font-weight:700;padding:0 10px'>{r['row']}</td>"
+                  + _cell(f"{r['strike']:,.0f}", bold=True) + _cell(f"{r['bid']:.2f}")
+                  + _cell(_fmt(r.get("one_in"), "one_in")) + _cell(_fmt(r.get("el_c"), "c"))
+                  + _cell(_fmt(r.get("ratio"), "r"), GRN_BG if ok else RED_BG)
+                  + _cell(_fmt(r.get("cautious_ratio"), "r")) + "</tr>")
+        st.markdown(h + "</table>", unsafe_allow_html=True)
+    t = m["table"]
+    if len(t):
+        cl, cr = st.columns(2)
+        for colw, side, colr in ((cl, "put", MAG), (cr, "call", BLUE)):
+            d = t[t["side"] == side]
+            if d.empty:
+                continue
+            lo, hi = m["win"][side]
+            f = _fig(f"{side}s — expected loss vs bid (¢ per share) · {m['mode']}", h=300)
+            f.add_bar(x=d["strike"], y=d["bid"] * 100, marker_color=colr, opacity=0.45, name="bid ¢")
+            f.add_scatter(x=d["strike"], y=d["el_c"], mode="lines+markers", line=dict(color="#f5c542", width=2),
+                          name="exp. loss ¢")
+            f.add_scatter(x=d["strike"], y=d["cautious_c"], mode="lines", line=dict(color="#ff8a65", width=1, dash="dot"),
+                          name="cautious ¢")
+            f.update_xaxes(range=[lo, hi])
+            f.update_yaxes(rangemode="tozero")
+            colw.plotly_chart(f, width="stretch", key=f"bb_m_{side}")
+        with st.expander(f"every strike with a bid, spot to {int(t['pct_from_spot'].abs().max() + 0.5)}% "
+                         f"({len(t)} strikes, {m['mode']})"):
+            show = t.assign(chance=t["one_in"].map(lambda v: _fmt(v, "one_in")))[
+                ["side", "strike", "pct_from_spot", "bid", "ask", "chance", "el_c", "cautious_c", "net_c", "ratio",
+                 "cautious_ratio"]]
+            st.dataframe(show.round(3), hide_index=True, width="stretch")
+    st.caption(MODEL_NOTE)
+    st.divider()
+
+
 def render(trk: BB.Tracker):
+    _model_block(trk)
     exps = trk.expiries()
     if not exps:
         st.info("SPX BB: waiting for the recorder's expiries…")
