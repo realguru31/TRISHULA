@@ -3,6 +3,11 @@
 Semantic versioning: MAJOR.MINOR.PATCH. The running version is shown in the app's
 status bar, every tab footer, and the Recorder diagnostics panel.
 
+## v0.30.3 — 2026-11-15 · SPX BB model charts: spot → last bid + 2 %
+- Each model chart runs from spot (solid line, labelled "SPX …") out to the furthest of the last live bid, the 0.05
+  edge, SAFEST and 2nd SAFEST, plus 2 % of that strike (calls ×1.02, puts ×0.98). Replaces display_window, which ran
+  on into strikes with nothing to sell. Height still capped at 50¢. Button-only rules unchanged.
+
 ## v0.30.2 — 2026-11-15 · SPX BB model charts reach the furthest live bid
 - Each model chart's strike range now always includes the furthest live bid (the 0.05 call / put edge at the press)
   as well as SAFEST / 2nd SAFEST; before, display_window alone could stop short of it (calls ended ~7,975 while

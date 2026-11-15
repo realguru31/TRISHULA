@@ -163,13 +163,16 @@ def _model_block(trk: BB.Tracker):
             d = t[t["side"] == side]
             if d.empty:
                 continue
-            # x = run.display_window (from where expected loss comes down to 50¢ out to where it fades);
             # y capped at 50¢ — the same view as the edge script. Blank bids are simply not drawn.
-            lo, hi = m["win"][side]
             keep = [r["strike"] for r in m.get("safe", []) if r["side"] == side]
             keep += [r["strike"] for r in m["key"] if r["side"] == side and r["row"].endswith("edge")]
             keep.append(float(d["strike"].min() if side == "put" else d["strike"].max()))   # furthest live bid
-            lo, hi = min([lo] + [k - 15 for k in keep]), max([hi] + [k + 15 for k in keep])
+            # v0.30.3: spot → the furthest of (last live bid, edge, SAFEST, 2nd SAFEST) + 2 % of that strike
+            sp_ = float(m["spot"])
+            if side == "put":
+                lo, hi = min(keep) * 0.98, sp_
+            else:
+                lo, hi = sp_, max(keep) * 1.02
             d = d[(d["strike"] >= lo) & (d["strike"] <= hi)]
             i_ = m["run"].info
             fit = (i_.get(f"{side}_fit") or {}).get("formula", "")
@@ -205,6 +208,9 @@ def _model_block(trk: BB.Tracker):
                 if sf.get("has_bid", True) and sf.get("bid"):
                     f.add_scatter(x=[k], y=[sf["bid"] * 100], mode="markers", showlegend=False, hoverinfo="skip",
                                   marker=dict(symbol="triangle-down", size=15, color=lc, line=dict(color="#fff", width=1)))
+            f.add_vline(x=sp_, line=dict(color="#e6edf3", width=2))
+            f.add_annotation(x=sp_, y=50, yanchor="bottom", showarrow=False, text=f"SPX {sp_:,.2f}",
+                             xanchor="right" if side == "put" else "left", font=dict(color="#e6edf3", size=11))
             f.update_xaxes(range=[lo, hi], title_text="strike")
             f.update_yaxes(range=[0, 50], title_text="¢ per share")
             colw.plotly_chart(f, width="stretch", key=f"bb_m_{side}")
