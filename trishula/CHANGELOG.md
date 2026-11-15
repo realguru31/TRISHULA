@@ -3,6 +3,17 @@
 Semantic versioning: MAJOR.MINOR.PATCH. The running version is shown in the app's
 status bar, every tab footer, and the Recorder diagnostics panel.
 
+## v0.30.1 — 2026-11-15 · SPX BB edge model: SAFEST lines, readable charts, % probability
+- core/edge_model.py replaced with the user's new version, unchanged (sha256 9034b9c0…) — adds run.safest().
+- SAFEST / 2nd SAFEST for puts and calls (run.safest): rows in the table (strike, historical move + date, bid at
+  that strike from the press snapshot, chance, expected loss, ratios — "no bid" shows no ratio) and dashed lines
+  on the charts with labels and a ▼ on the bid.
+- Charts redrawn like the edge script: live bids as dots (blank bids not drawn), expected loss dashed, cautious
+  (95 %) dotted, y capped at 50¢, x = run.display_window (widened to keep SAFEST on screen); title shows SPX, VIX
+  and the fitted typical-move formula.
+- Probability shown as % per session and times per year (× 252 sessions) instead of 1 in N.
+- Still button-only: nothing runs on load, rerun, toggle change or in the tracker thread.
+
 ## v0.30.0 — 2026-11-15 · SPX BB: edge model (button only)
 - core/edge_model.py added **unchanged** (user's file, sha256 e2b752e9…). History from Yahoo via its own
   load_history(); `yfinance` added to requirements.

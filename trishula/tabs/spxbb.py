@@ -76,20 +76,56 @@ def _run_model(trk: BB.Tracker):
             continue
         b, a = trk.quote(exp, k, 1 if side == "call" else -1)
         key.append(dict(run.price(side, k, b if b == b else 0.0), row=lab, ask=a))
-    st.session_state["bb_model"] = dict(run=run, mode=mode, exp=exp, spot=spot, src=src, table=tbl, key=key,
+    safe = []
+    for side in ("put", "call"):
+        for sf in run.safest(side):
+            b, a = trk.quote(exp, float(sf["strike"]), 1 if side == "call" else -1)
+            safe.append(dict(run.price(side, sf["strike"], b if b == b else 0.0), row=sf["name"], ask=a,
+                             move_pct=sf["move_pct"], date=sf["date"], has_bid=(b == b)))
+    st.session_state["bb_model"] = dict(run=run, mode=mode, exp=exp, spot=spot, src=src, table=tbl, key=key, safe=safe,
                                         win={"put": run.display_window("put"), "call": run.display_window("call")})
 
 
 def _fmt(v, kind):
     if v is None or not v == v:
         return "—"
-    if kind == "one_in":
-        return "1 in ∞" if v == float("inf") else f"1 in {v:,.0f}" if v >= 10 else f"1 in {v:,.1f}"
+    if kind == "pct":                                   # v = chance reached (0–1) for ONE session
+        p = v * 100
+        yr = v * 252
+        ps = f"{p:.2f}%" if p >= 0.1 else f"{p:.3f}%" if p >= 0.001 else f"{p:.1e}%"
+        ys = f"{yr:.1f}×/yr" if yr >= 1 else f"{yr:.2f}×/yr" if yr >= 0.01 else f"once in {1 / yr:,.0f} yrs" if yr > 0 else "never"
+        return f"{ps} · {ys}"
     if kind == "c":
         return f"{v:,.2f}¢"
     if kind == "r":
         return f"{v:,.2f}"
     return f"{v}"
+
+
+def _key_table(rows):
+    if not rows:
+        return
+    h = ("<table style='border-collapse:collapse;font-family:monospace;font-size:1.02em'><tr>"
+         + "".join(f"<td style='color:#8b949e;padding:2px 12px;text-align:right'>{c}</td>"
+                   for c in ("", "strike", "history move", "bid", "chance reached (per session · per year)", "exp. loss", "ratio after fees",
+                             "cautious ratio"))
+         + "</tr>")
+    for r in rows:
+        col = BLUE if r["side"] == "call" else MAG
+        ok = r.get("ratio") == r.get("ratio") and r.get("ratio", 0) >= 1
+        mv = f"{r['move_pct']:+.2f}% · {r['date']}" if "move_pct" in r else ""
+        name = f"{r['row']} {'P' if r['side'] == 'put' else 'C'}" if "move_pct" in r else r["row"]
+        nob = not r.get("has_bid", True) or not r.get("bid")
+        bid = "no bid" if nob else f"{r['bid']:.2f}"
+        if nob:                                      # nothing to sell there → no ratio
+            r = dict(r, ratio=float("nan"), cautious_ratio=float("nan"))
+            ok = False
+        h += (f"<tr><td style='color:{col};font-weight:700;padding:2px 12px'>{name}</td>"
+              + _cell(f"{r['strike']:,.0f}", bold=True) + _cell(mv, fg="#8b949e") + _cell(bid)
+              + _cell(_fmt(r.get("touch"), "pct")) + _cell(_fmt(r.get("el_c"), "c"))
+              + _cell(_fmt(r.get("ratio"), "r"), GRN_BG if ok else RED_BG, bold=True)
+              + _cell(_fmt(r.get("cautious_ratio"), "r")) + "</tr>")
+    st.markdown(h + "</table>", unsafe_allow_html=True)
 
 
 def _model_block(trk: BB.Tracker):
@@ -115,20 +151,11 @@ def _model_block(trk: BB.Tracker):
     if cur != m["mode"]:
         st.warning(f"These results were run for **{m['mode']}** — the toggle is now on {cur}. "
                    "Press Run model to refresh.")
-    if m["key"]:
-        h = ("<table style='border-collapse:collapse;font-family:monospace'><tr>"
-             + "".join(f"<td style='color:#8b949e;padding:0 10px;text-align:right'>{c}</td>"
-                       for c in ("", "strike", "bid", "chance reached", "exp. loss", "ratio after fees", "cautious ratio"))
-             + "</tr>")
-        for r in m["key"]:
-            col = BLUE if r["side"] == "call" else MAG
-            ok = r.get("ratio") == r.get("ratio") and r.get("ratio", 0) >= 1
-            h += (f"<tr><td style='color:{col};font-weight:700;padding:0 10px'>{r['row']}</td>"
-                  + _cell(f"{r['strike']:,.0f}", bold=True) + _cell(f"{r['bid']:.2f}")
-                  + _cell(_fmt(r.get("one_in"), "one_in")) + _cell(_fmt(r.get("el_c"), "c"))
-                  + _cell(_fmt(r.get("ratio"), "r"), GRN_BG if ok else RED_BG)
-                  + _cell(_fmt(r.get("cautious_ratio"), "r")) + "</tr>")
-        st.markdown(h + "</table>", unsafe_allow_html=True)
+    st.caption(f"SAFEST = strike just beyond the biggest one-session move since 1990 on days with VIX ≤ "
+               f"{i.get('vix_bucket', '?')}, measured from {i.get('safest_measured_from', float('nan')):,.2f} — "
+               "has not happened in that history, not cannot happen")
+    _key_table([r for r in m.get("safe", []) if r["side"] == "put"] + [r for r in m.get("safe", []) if r["side"] == "call"]
+               + m["key"])
     t = m["table"]
     if len(t):
         cl, cr = st.columns(2)
@@ -136,19 +163,53 @@ def _model_block(trk: BB.Tracker):
             d = t[t["side"] == side]
             if d.empty:
                 continue
+            # x = run.display_window (from where expected loss comes down to 50¢ out to where it fades);
+            # y capped at 50¢ — the same view as the edge script. Blank bids are simply not drawn.
             lo, hi = m["win"][side]
-            f = _fig(f"{side}s — expected loss vs bid (¢ per share) · {m['mode']}", h=300)
-            f.add_bar(x=d["strike"], y=d["bid"] * 100, marker_color=colr, opacity=0.45, name="bid ¢")
-            f.add_scatter(x=d["strike"], y=d["el_c"], mode="lines+markers", line=dict(color="#f5c542", width=2),
-                          name="exp. loss ¢")
-            f.add_scatter(x=d["strike"], y=d["cautious_c"], mode="lines", line=dict(color="#ff8a65", width=1, dash="dot"),
-                          name="cautious ¢")
-            f.update_xaxes(range=[lo, hi])
-            f.update_yaxes(rangemode="tozero")
+            for r in m.get("safe", []):
+                if r["side"] == side:
+                    lo, hi = min(lo, r["strike"] - 15), max(hi, r["strike"] + 15)
+            d = d[(d["strike"] >= lo) & (d["strike"] <= hi)]
+            i_ = m["run"].info
+            fit = (i_.get(f"{side}_fit") or {}).get("formula", "")
+            f = _fig(f"FAR OTM {m['mode']} {side.upper()}S — market bid vs expected loss · SPX {i_['spot']:,.2f} · "
+                     f"VIX {i_['vix']:.2f}<br><span style='font-size:11px;color:#8b949e'>typical move ~ {fit}</span>",
+                     h=420)
+            f.update_layout(margin=dict(l=8, r=8, t=58, b=8), showlegend=True,
+                            legend=dict(orientation="h", y=-0.14, x=0, font=dict(size=11)))
+            gx = np.linspace(lo, hi, 160)
+            gq = [m["run"].price(side, k, 0.0) for k in gx]
+            f.add_scatter(x=gx, y=[q["el_c"] for q in gq], mode="lines", line=dict(color="#f5c542", width=2, dash="dash"),
+                          name="expected loss", hoverinfo="skip")
+            f.add_scatter(x=gx, y=[q["cautious_c"] for q in gq], mode="lines",
+                          line=dict(color="#ff8a65", width=1.3, dash="dot"), name="cautious (95 %)", hoverinfo="skip")
+            if len(d):
+                f.add_scatter(x=d["strike"], y=d["bid"] * 100, mode="markers", name="live bid",
+                              marker=dict(size=8, color=colr, line=dict(color="#0e1117", width=1)),
+                              customdata=np.stack([d["touch"] * 100, d["touch"] * 252, d["el_c"], d["ratio"]], -1),
+                              hovertemplate="%{x:,.0f} · bid %{y:.0f}¢<br>reached %{customdata[0]:.3f}% · "
+                                            "~%{customdata[1]:.2f}×/yr<br>exp loss %{customdata[2]:.2f}¢ · "
+                                            "ratio %{customdata[3]:.2f}<extra></extra>")
+            for n_, sf in enumerate([r for r in m.get("safe", []) if r["side"] == side]):
+                k = sf["strike"]
+                lc = "#2ecc71" if n_ == 0 else "#c77dff"
+                f.add_vline(x=k, line=dict(color=lc, width=1.6, dash="dash"))
+                outward = (n_ == 0) == (side == "call")      # SAFEST label on its outer side, 2nd on the inner side
+                f.add_annotation(x=k, y=47, xanchor="left" if outward else "right", xshift=6 if outward else -6,
+                                 yanchor="top", align="left" if outward else "right", text=f"<b>{sf['row']}</b><br>{k:,.0f}<br>"
+                                 f"({sf['move_pct']:+.1f}% {sf['date']})<br>"
+                                 + ("no bid" if not sf.get("has_bid", True) or not sf.get("bid")
+                                    else f"bid {sf['bid']:.2f}"),
+                                 showarrow=False, font=dict(color=lc, size=11), bgcolor="rgba(14,17,23,0.75)")
+                if sf.get("has_bid", True) and sf.get("bid"):
+                    f.add_scatter(x=[k], y=[sf["bid"] * 100], mode="markers", showlegend=False, hoverinfo="skip",
+                                  marker=dict(symbol="triangle-down", size=15, color=lc, line=dict(color="#fff", width=1)))
+            f.update_xaxes(range=[lo, hi], title_text="strike")
+            f.update_yaxes(range=[0, 50], title_text="¢ per share")
             colw.plotly_chart(f, width="stretch", key=f"bb_m_{side}")
         with st.expander(f"every strike with a bid, spot to {int(t['pct_from_spot'].abs().max() + 0.5)}% "
                          f"({len(t)} strikes, {m['mode']})"):
-            show = t.assign(chance=t["one_in"].map(lambda v: _fmt(v, "one_in")))[
+            show = t.assign(chance=t["touch"].map(lambda v: _fmt(v, "pct")))[
                 ["side", "strike", "pct_from_spot", "bid", "ask", "chance", "el_c", "cautious_c", "net_c", "ratio",
                  "cautious_ratio"]]
             st.dataframe(show.round(3), hide_index=True, width="stretch")

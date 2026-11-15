@@ -9,6 +9,7 @@ work only when run_model() is called, and returns a plain result object.
     run.put(7220)                    # -> dict: chance reached, expected loss, cautious loss
     run.call(7775)
     run.price("put", 7220, bid=0.60) # same + ratio after fees and cautious ratio
+    run.safest("put")                # SAFEST and 2nd SAFEST lines (same rule as the edge scripts)
     run.info                         # what was used: run time, spot, VIX and its date
 
 What the two toggles mean (one trading session of risk in both):
@@ -162,9 +163,17 @@ def _fit_side(move, X, log_v, w, x_now):
 class ModelRun:
     """Result of one run. Holds no timers and never recalculates: build a new one to refresh."""
 
-    def __init__(self, info, spot, put_model, call_model, fees_open):
+    def __init__(self, info, spot, put_model, call_model, fees_open, safest):
         self.info, self.spot, self.fees_open = info, float(spot), float(fees_open)
         self._m = {"put": put_model, "call": call_model}
+        self._safest = safest
+
+    def safest(self, side):
+        """[SAFEST, 2nd SAFEST] for "put" or "call": the strike just beyond the biggest and second-biggest
+        one-session move since 1990 on days whose VIX close was at or below today's VIX rounded up
+        (info["vix_bucket"]). Each: name, strike, move_pct, date (the prior close the move started from).
+        Means "has not happened in that history", not "cannot happen"."""
+        return self._safest[side]
 
     def _quote(self, side, strike):
         strike = float(strike)
@@ -265,6 +274,23 @@ def run_model(toggle: str = "0DTE", spot: float | None = None, history: pd.DataF
     if not np.isfinite(x_now).all():
         raise ValueError("latest VIX / range inputs are missing in the history")
 
+    # SAFEST / 2nd SAFEST, same rule as the edge scripts: biggest close -> next-session moves since 1990
+    # among days with VIX <= today's VIX rounded up, applied to the last close (0DTE) or the spot (1DTE).
+    bucket = int(np.ceil(float(np.exp(ref_row["log_vix"]))))
+    cl = h[h.index >= CLOSE_HISTORY_FROM]
+    fall = cl["Low"].shift(-1) / cl["Close"] - 1.0
+    rise = cl["High"].shift(-1) / cl["Close"] - 1.0
+    if partial:
+        fall.iloc[-2] = rise.iloc[-2] = np.nan
+    calm = cl["vix"] <= bucket
+    base = float(ref_row["Close"]) if at_open else float(spot)
+    safest = {
+        "put": [{"name": nm, "strike": int((base * (1 + r)) // 5) * 5, "move_pct": r * 100.0, "date": str(d.date())}
+                for nm, (d, r) in zip(("SAFEST", "2nd SAFEST"), fall[calm].nsmallest(2).items())],
+        "call": [{"name": nm, "strike": int(-((-base * (1 + r)) // 5)) * 5, "move_pct": r * 100.0, "date": str(d.date())}
+                 for nm, (d, r) in zip(("SAFEST", "2nd SAFEST"), rise[calm].nlargest(2).items())],
+    }
+
     put_model, put_d = _fit_side(tr["put_move"].values, X, tr["log_vix"].values, w, x_now)
     call_model, call_d = _fit_side(tr["call_move"].values, X, tr["log_vix"].values, w, x_now)
     info = {
@@ -274,10 +300,12 @@ def run_model(toggle: str = "0DTE", spot: float | None = None, history: pd.DataF
         "spot_source": spot_source,
         "vix": float(np.exp(ref_row["log_vix"])),
         "vix_date": str(ref_row.name.date()),
+        "vix_bucket": bucket,
+        "safest_measured_from": base,
         "history_to": str(h.index[-1].date()),
         "measure": measure,
         "put_fit": put_d,
         "call_fit": call_d,
         "fees_open": float(fees_open),
     }
-    return ModelRun(info, spot, put_model, call_model, fees_open)
+    return ModelRun(info, spot, put_model, call_model, fees_open, safest)
