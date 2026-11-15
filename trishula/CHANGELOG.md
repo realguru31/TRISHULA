@@ -3,6 +3,14 @@
 Semantic versioning: MAJOR.MINOR.PATCH. The running version is shown in the app's
 status bar, every tab footer, and the Recorder diagnostics panel.
 
+## v0.30.4 — 2026-11-15 · SPX BB model: one small box per side + best-ratio star
+- The combined table is replaced by a box above each chart (puts above the put chart, calls above the call chart):
+  SAFEST, 2nd SAFEST, Furthest put / Furthest call (the last live bid) and ★ Best ratio — strike, history move,
+  bid, chance per year, ratio after fees. Sold rows, per-session %, expected loss and cautious ratio removed.
+- ★ Best ratio = highest ratio after fees among live bids where expected loss ≤ 50¢ (the chart's far-OTM zone;
+  ties go further from spot); a yellow star marks it on the chart at its bid.
+- SPX label moved inside the plot so it no longer overlaps the title.
+
 ## v0.30.3 — 2026-11-15 · SPX BB model charts: spot → last bid + 2 %
 - Each model chart runs from spot (solid line, labelled "SPX …") out to the furthest of the last live bid, the 0.05
   edge, SAFEST and 2nd SAFEST, plus 2 % of that strike (calls ×1.02, puts ×0.98). Replaces display_window, which ran

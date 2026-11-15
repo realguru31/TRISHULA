@@ -128,6 +128,39 @@ def _key_table(rows):
     st.markdown(h + "</table>", unsafe_allow_html=True)
 
 
+def _best(d, spot):
+    """Strike with the highest ratio after fees among live bids in the far-OTM zone the chart shows (expected loss
+    ≤ 50¢, the same cap as the chart); a tie goes to the strike further from spot."""
+    x = d[d["ratio"].notna() & (d["bid"] > 0) & (d["el_c"] <= 50.0)]
+    if x.empty:
+        return None
+    x = x.assign(_far=(x["strike"] - spot).abs()).sort_values(["ratio", "_far"], ascending=False)
+    return x.iloc[0].to_dict()
+
+
+def _side_box(side, m, best):
+    col = BLUE if side == "call" else MAG
+    rows = [dict(r, lab=r["row"]) for r in m.get("safe", []) if r["side"] == side]
+    rows += [dict(r, lab=f"Furthest {side}") for r in m["key"] if r["side"] == side and r["row"].endswith("edge")]
+    if best is not None:
+        rows.append(dict(best, lab="<span style='color:#f5c542'>★</span> Best ratio"))
+    h = ("<table style='border-collapse:collapse;font-family:monospace;font-size:0.98em;margin-bottom:4px'><tr>"
+         + f"<td style='color:{col};font-weight:700;padding:2px 10px'>{side.upper()}S</td>"
+         + "".join(f"<td style='color:#8b949e;padding:2px 10px;text-align:right'>{c}</td>"
+                   for c in ("strike", "history move", "bid", "chance / yr", "ratio")) + "</tr>")
+    for r in rows:
+        nob = not r.get("has_bid", True) or not r.get("bid")
+        ratio = float("nan") if nob else r.get("ratio")
+        ok = ratio == ratio and ratio >= 1
+        mv = f"{r['move_pct']:+.2f}% · {r['date']}" if "move_pct" in r else ""
+        yr = _fmt(r.get("touch"), "pct").split(" · ")[-1] if r.get("touch") == r.get("touch") else "—"
+        h += (f"<tr><td style='color:{col};font-weight:700;padding:2px 10px'>{r['lab']}</td>"
+              + _cell(f"{r['strike']:,.0f}", bold=True) + _cell(mv, fg="#8b949e")
+              + _cell("no bid" if nob else f"{r['bid']:.2f}") + _cell(yr)
+              + _cell(_fmt(ratio, "r"), GRN_BG if ok else RED_BG, bold=True) + "</tr>")
+    st.markdown(h + "</table>", unsafe_allow_html=True)
+
+
 def _model_block(trk: BB.Tracker):
     st.markdown("**Edge model** — expected loss of far-OTM strikes (runs only when you press the button)")
     b1, b2 = st.columns([1, 6])
@@ -154,8 +187,6 @@ def _model_block(trk: BB.Tracker):
     st.caption(f"SAFEST = strike just beyond the biggest one-session move since 1990 on days with VIX ≤ "
                f"{i.get('vix_bucket', '?')}, measured from {i.get('safest_measured_from', float('nan')):,.2f} — "
                "has not happened in that history, not cannot happen")
-    _key_table([r for r in m.get("safe", []) if r["side"] == "put"] + [r for r in m.get("safe", []) if r["side"] == "call"]
-               + m["key"])
     t = m["table"]
     if len(t):
         cl, cr = st.columns(2)
@@ -163,6 +194,9 @@ def _model_block(trk: BB.Tracker):
             d = t[t["side"] == side]
             if d.empty:
                 continue
+            best = _best(d, float(m["spot"]))
+            with colw:
+                _side_box(side, m, best)
             # y capped at 50¢ — the same view as the edge script. Blank bids are simply not drawn.
             keep = [r["strike"] for r in m.get("safe", []) if r["side"] == side]
             keep += [r["strike"] for r in m["key"] if r["side"] == side and r["row"].endswith("edge")]
@@ -208,9 +242,14 @@ def _model_block(trk: BB.Tracker):
                 if sf.get("has_bid", True) and sf.get("bid"):
                     f.add_scatter(x=[k], y=[sf["bid"] * 100], mode="markers", showlegend=False, hoverinfo="skip",
                                   marker=dict(symbol="triangle-down", size=15, color=lc, line=dict(color="#fff", width=1)))
+            if best is not None:
+                f.add_scatter(x=[best["strike"]], y=[best["bid"] * 100], mode="markers", name="best ratio",
+                              marker=dict(symbol="star", size=16, color="#f5c542", line=dict(color="#0e1117", width=1)),
+                              hovertemplate=f"BEST ratio {best['strike']:,.0f} · {best['ratio']:.2f}×<extra></extra>")
             f.add_vline(x=sp_, line=dict(color="#e6edf3", width=2))
-            f.add_annotation(x=sp_, y=50, yanchor="bottom", showarrow=False, text=f"SPX {sp_:,.2f}",
-                             xanchor="right" if side == "put" else "left", font=dict(color="#e6edf3", size=11))
+            f.add_annotation(x=sp_, y=1, yref="paper", yanchor="top", showarrow=False, text=f"SPX {sp_:,.2f}",
+                             xanchor="right" if side == "put" else "left", xshift=-4 if side == "put" else 4,
+                             font=dict(color="#e6edf3", size=11), bgcolor="rgba(14,17,23,0.8)")
             f.update_xaxes(range=[lo, hi], title_text="strike")
             f.update_yaxes(range=[0, 50], title_text="¢ per share")
             colw.plotly_chart(f, width="stretch", key=f"bb_m_{side}")
