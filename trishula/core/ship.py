@@ -36,6 +36,9 @@ def day_zip(rec) -> bytes:
              "spot.parquet": lambda: rec.spot_df(), "es1m.parquet": lambda: rec.es_df(),
              "candles5.parquet": lambda: rec.candles5_df(), "spx1m.parquet": lambda: rec.candles_df(),
              "opt1m_backfill.parquet": lambda: rec.opt1m_df(),          # L22: the ridges' pre-restart source
+             "book.parquet": lambda: (rec.book_frame() if hasattr(rec, "book_frame") else None),  # v0.32.1:
+             # long-dated book (all subscribed expiries beyond 0/1DTE: sym, exp, strike, cp, type, iv, gamma, oi,
+             # volume) as at the send — OI is fixed for the day, so Terrain's book layer can be rebuilt offline
              "dt2_scorecard.parquet": lambda: (pd.concat(list(rec.ui_state.get("_dt2_cards", {}).values()), ignore_index=True)
                                                if rec.ui_state.get("_dt2_cards") else None),   # v0.17: DT v2 signals + outcomes
              "signals_card.parquet": lambda: (pd.concat(list(rec.ui_state.get("_sig_cards", {}).values()), ignore_index=True)
@@ -56,6 +59,7 @@ def day_zip(rec) -> bytes:
         z.writestr("oi_log.json", json.dumps(oi))
         z.writestr("legs.json", json.dumps(legs))
         z.writestr("status.json", json.dumps(rec.status(), default=str))
+        z.writestr("book_state.json", json.dumps(getattr(rec, "book_state", {}) or {}, default=str))
         try:                                             # v0.29.0: SPX BB edge series + alerts
             trk = getattr(rec, "_bb", None)
             if trk is not None:

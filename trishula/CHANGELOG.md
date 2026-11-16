@@ -3,6 +3,11 @@
 Semantic versioning: MAJOR.MINOR.PATCH. The running version is shown in the app's
 status bar, every tab footer, and the Recorder diagnostics panel.
 
+## v0.32.1 — 2026-11-16 · day zip carries the long-dated book
+- The day zip (📦 / 📤 / the 16:05 GitHub upload) now includes book.parquet — the long-dated book as at the send
+  (sym, exp, strike, cp, type, iv, gamma, oi, volume for every subscribed expiry beyond 0/1DTE) — and
+  book_state.json, so Terrain's book layer can be rebuilt offline to fit against Dan's map. Needs a reboot.
+
 ## v0.32.0 — 2026-11-16 · SPX BB: Telegram when a sold strike's ASK reaches a level
 - New setting under the sold boxes, default 0.50: when the ASK of your sold C or sold P reaches it, one Telegram
   ("⚠️ … your sold 7,100P ASK 0.55 (bid 0.45) ≥ 0.50", spot, that side's edge, time). Regular hours only
