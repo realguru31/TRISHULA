@@ -28,6 +28,8 @@ BB_ROLL = dt.time(21, 0)
 THRESHOLDS = [5, 10, 15, 20, 25, 30, 40, 50]
 CHECK_S = 5                 # v0.33.0: was 15
 CFG_PATH = "state/bb_config.json"
+HIST_PATH = "state/bb_history.json"       # v0.34.0: edge-change points + alerts + alert levels (survive reboots)
+SAVE_EVERY_S = 60
 DEFAULTS = {"mode": "0DTE", "min_bid": 0.05, "sold_call": 0.0, "sold_put": 0.0,
             "alert0": True, "thr0": 10, "alert1": True, "thr1": 10,       # v0.31.0: per-expiry alerts
             "ask_alert": 0.50}                                            # v0.32.0: sold-strike ask alert level
@@ -45,6 +47,22 @@ class Tracker:
         self.seen: set = set()
         self.status = {"last": None, "error": None, "tg": None}
         self.t = None
+        self._dirty, self._saved_at = False, 0.0
+        try:                                       # v0.34.0: edge history survives reboots
+            h = ST.read_file(HIST_PATH)
+            if isinstance(h, dict):
+                today = now_et().date()
+                for k, v in (h.get("series") or {}).items():
+                    if dt.date.fromisoformat(k[:10]) >= today - dt.timedelta(days=4):
+                        self.series[k] = [tuple(r) for r in v]
+                        self.seen.add(k)
+                self.alerts = [tuple(a) for a in (h.get("alerts") or []) if a[1] in self.series]
+                for k, v in (h.get("marks") or {}).items():
+                    e_, sd = k.split("|")
+                    if e_ in self.series:
+                        self.marks[(e_, sd)] = float(v)
+        except Exception:                          # noqa: BLE001
+            pass
         try:
             saved = ST.read_file(CFG_PATH)
             if isinstance(saved, dict):
@@ -158,11 +176,11 @@ class Tracker:
             rows = self.series.setdefault(exp, [])
             row = (now.isoformat(timespec="seconds"), round(spot, 2), src, *ce, *pe)
             last = rows[-1] if rows else None
-            # v0.33.0: store a point only when something changed (edges or their quotes, spot by ≥ 0.50) or once a
-            # minute anyway — checks run every 5 s but a full day still fits the chart history
-            if (last is None or row[3:] != last[3:] or abs(row[1] - last[1]) >= 0.5
-                    or (now - dt.datetime.fromisoformat(last[0])).total_seconds() >= 60):
+            # v0.34.0: store a point ONLY when the call or put edge STRIKE changes (bid/ask and spot moves don't);
+            # the charts draw steps carried to now and take SPX from the 1-minute candles
+            if last is None or row[3] != last[3] or row[6] != last[6]:
                 rows.append(row)
+                self._dirty = True
             if len(rows) > 12000:
                 del rows[:len(rows) - 12000]
             self._alerts(lab, exp, spot, src, e, now)       # v0.31.0: both expiries, whatever the view toggle
@@ -176,6 +194,14 @@ class Tracker:
         while len(self.series) > 3:
             self.series.pop(sorted(self.series)[0], None)
         self.status["last"] = now.strftime("%H:%M:%S")
+        if self._dirty and time.time() - self._saved_at >= SAVE_EVERY_S:
+            self._dirty, self._saved_at = False, time.time()
+            try:
+                ST.save_file(HIST_PATH, {"series": self.series, "alerts": self.alerts,
+                                         "marks": {f"{k[0]}|{k[1]}": v for k, v in self.marks.items()}},
+                             "SPX BB history")
+            except Exception:                      # noqa: BLE001
+                self._dirty = True
 
     def alert_window(self, lab, now) -> bool:
         """0DTE: always (while live) · 1DTE: only 15:00–21:00 ET."""

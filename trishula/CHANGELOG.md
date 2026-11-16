@@ -3,6 +3,13 @@
 Semantic versioning: MAJOR.MINOR.PATCH. The running version is shown in the app's
 status bar, every tab footer, and the Recorder diagnostics panel.
 
+## v0.34.0 — 2026-11-16 · SPX BB history = edge changes only, kept across reboots
+- A chart point is stored only when the call or put edge STRIKE changes (bid/ask and spot moves no longer add
+  points). The charts put them on a 1-minute grid to now, edges held as steps; SPX comes from the recorder's
+  1-minute candles (stored spot outside cash hours).
+- The edge history, alert markers and alert levels are saved to state/bb_history.json on the state branch (at most
+  once a minute, only after a change) and reloaded on start — a reboot no longer loses the morning.
+
 ## v0.33.0 — 2026-11-16 · SPX BB every 5 seconds
 - Tracker checks every 5 s (was 15): edges, chart points and Telegram alerts react within ~5 s.
 - Live section of the tab refreshes every 5 s (was 15); the two charts are rebuilt only when their data changed,

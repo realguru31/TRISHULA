@@ -378,7 +378,8 @@ def _live(trk: BB.Tracker):
         left.info(f"chart fills as the tracker samples (every {BB.CHECK_S} s)")
         return
     # v0.33.0: build the two charts only when their data changed — otherwise re-send the identical figures
-    sig = (exp, len(df), tuple(df.iloc[-1].astype(str)), len(trk.alerts), sc, sput)
+    sig = (exp, len(df), tuple(df.iloc[-1].astype(str)), len(trk.alerts), sc, sput,
+           now_et().strftime("%H:%M"), round(float(spot), 1) if spot == spot else None)
     cache = st.session_state.get("_bb_figs")
     if cache and cache[0] == sig:
         with left:
@@ -386,12 +387,32 @@ def _live(trk: BB.Tracker):
         with right:
             st.plotly_chart(cache[2], width="stretch", key="bb_e")
         return
-    d = df.dropna(subset=["ce", "pe"])
+    # v0.34.0: rows are edge-CHANGE points only → put them on a 1-minute grid from the first point to now,
+    # edges held (step) until the next change; SPX from the recorder's 1-minute candles, else the stored spot
+    d0 = df.dropna(subset=["ce", "pe"]).sort_values("t")
+    if d0.empty:
+        left.info("waiting for the first edges…")
+        return
+    end_t = pd.Timestamp(now_et().replace(tzinfo=None)) if not expired else d0["t"].iloc[-1]
+    grid = pd.date_range(d0["t"].iloc[0].floor("1min"), max(end_t, d0["t"].iloc[-1]).ceil("1min"), freq="1min")
+    d = pd.merge_asof(pd.DataFrame({"t": grid}), d0[["t", "ce", "pe", "spot"]], on="t", direction="backward")
+    d = pd.concat([d0[["t", "ce", "pe", "spot"]], d]).sort_values("t").drop_duplicates("t", keep="first")
+    d[["ce", "pe", "spot"]] = d[["ce", "pe", "spot"]].ffill()
+    try:
+        c = rec.candles_df()
+        if len(c):
+            ct = pd.to_datetime(c["ts_ms"], unit="ms", utc=True).dt.tz_convert("America/New_York").dt.tz_localize(None)
+            px = pd.Series(c["close"].values, index=ct.dt.floor("1min")).groupby(level=0).last()
+            m_ = d["t"].dt.floor("1min").map(px)
+            d["spot"] = m_.where(m_.notna(), d["spot"])
+    except Exception:                                # noqa: BLE001 — keep the stored spot
+        pass
     t = d["t"]
     # ── left: 0.05-bid width ────────────────────────────────────────────────────────
     with left:
         f = _fig("0.05-bid width (pts) — call edge − put edge")
-        f.add_scatter(x=t, y=d["ce"] - d["pe"], mode="lines", line=dict(color="#ab47bc", width=2), name="width")
+        f.add_scatter(x=t, y=d["ce"] - d["pe"], mode="lines", line=dict(color="#ab47bc", width=2, shape="hv"),
+                      name="width")
         st.plotly_chart(f, width="stretch", key="bb_w")
         fw = f
     # ── right: furthest 0.05-bid strikes, bands spot → edge ────────────────────────
