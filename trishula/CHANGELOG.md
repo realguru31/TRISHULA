@@ -3,6 +3,10 @@
 Semantic versioning: MAJOR.MINOR.PATCH. The running version is shown in the app's
 status bar, every tab footer, and the Recorder diagnostics panel.
 
+## v0.31.1 — 2026-11-16 · SPX BB model charts: far end + 1 %
+- Model charts still start at spot; the far end is now the furthest of (last live bid, edge, SAFEST, 2nd SAFEST)
+  + 1 % of that strike (was 2 %). Display only.
+
 ## v0.31.0 — 2026-11-16 · SPX BB alerts: both expiries, 1DTE only 15:00–21:00 ET, "EDGE"
 - Alerts no longer follow the view toggle (the saved toggle was 1DTE, so 0DTE never alerted). Now both expiries
   alert whatever any tab shows: **0DTE always** (while live) · **1DTE only 15:00–21:00 ET**.

@@ -201,12 +201,12 @@ def _model_block(trk: BB.Tracker):
             keep = [r["strike"] for r in m.get("safe", []) if r["side"] == side]
             keep += [r["strike"] for r in m["key"] if r["side"] == side and r["row"].endswith("edge")]
             keep.append(float(d["strike"].min() if side == "put" else d["strike"].max()))   # furthest live bid
-            # v0.30.3: spot → the furthest of (last live bid, edge, SAFEST, 2nd SAFEST) + 2 % of that strike
+            # v0.31.1: spot → the furthest of (last live bid, edge, SAFEST, 2nd SAFEST) + 1 % of that strike
             sp_ = float(m["spot"])
             if side == "put":
-                lo, hi = min(keep) * 0.98, sp_
+                lo, hi = min(keep) * 0.99, sp_
             else:
-                lo, hi = sp_, max(keep) * 1.02
+                lo, hi = sp_, max(keep) * 1.01
             d = d[(d["strike"] >= lo) & (d["strike"] <= hi)]
             i_ = m["run"].info
             fit = (i_.get(f"{side}_fit") or {}).get("formula", "")
