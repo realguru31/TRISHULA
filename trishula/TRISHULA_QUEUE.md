@@ -5,6 +5,7 @@ Rules unchanged: whole zip every time (delete trishula/ → unzip → commit →
 secrets only in Streamlit · one repo, no GitHub tokens · Colab scripts outside the repo, both tokens prefilled.
 
 ## QUEUED (low priority, not approved): recorder `_initial_spot` stamps SPX with RECEIPT time — on (re)connect outside hours Friday's close counts as live SPX for 60 s (seen 16 Nov 05:10: spot 7,561.67 "spx" vs ~7,531 synth). Fix: stamp with the trade's own time (as `_l_trade` does). Needs reboot.
+## ✅ BUILT v0.36.0 (APPROVE 16 Nov 17:27 ET): SPX BB split into its own app (spxbb.py, core/bbfeed.py); removed from TRISHULA
 ## ✅ BUILT v0.35.1 (APPROVE 16 Nov 12:27 ET): SPX BB control bar in three boxes
 ## ✅ BUILT v0.35.0 (APPROVE 16 Nov 12:15 ET): Book levels 2 up / 1 balance / 2 down, no next-BAL lines
 ## QUEUED (needs APPROVE): Book test clusters fragment on single opposite-sign strikes (12 Nov / 16 Nov: tests 10 pts apart) — guide §4.5 "structure > single strike" / bucketing; decide a rule

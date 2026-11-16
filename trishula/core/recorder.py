@@ -314,20 +314,7 @@ class Recorder:
             await s.subscribe(Greeks, syms)
             await s.subscribe(Summary, syms)
             await s.subscribe(Trade, syms)
-            # v0.29.0 SPX BB: bid/ask on EVERY 0DTE / 1DTE SPXW strike — the 0.05-bid edges can sit 600 pts out,
-            # far beyond the ±STRIKES_EACH_SIDE legs. Quotes only (no prints / greeks / snapshots for the extras).
-            bb = {}
-            for ex in (e0, e1):
-                for o in chain[ex]:
-                    cp = 1 if str(o.option_type.value).upper().startswith("C") else -1
-                    bb[o.streamer_symbol] = (str(ex), float(o.strike_price), cp)
-            self.bb_meta = bb
-            try:
-                extra = [x for x in bb if x not in legs]
-                for i in range(0, len(extra), 500):
-                    await s.subscribe(Quote, extra[i:i + 500])
-            except Exception as e:                          # noqa: BLE001
-                self._err(e, "bb-subscribe")
+            # v0.36.0: the all-strikes SPX BB quotes moved to the standalone SPX BB app (core/bbfeed.py)
             self._subscribed = {str(e0), str(e1)}
             self._spot_ref = spot
             try:

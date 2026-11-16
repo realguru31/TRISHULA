@@ -47,6 +47,7 @@ class Tracker:
         self.seen: set = set()
         self.status = {"last": None, "error": None, "tg": None}
         self.t = None
+        self._stop = False                         # v0.36.0: a newer version's tracker stops this one
         self._dirty, self._saved_at = False, 0.0
         try:                                       # v0.34.0: edge history survives reboots
             h = ST.read_file(HIST_PATH)
@@ -273,13 +274,16 @@ class Tracker:
 
     # ── thread ──────────────────────────────────────────────────────────────────
     def start(self):
-        if self.t is None or not self.t.is_alive():
+        if not self._stop and (self.t is None or not self.t.is_alive()):
             self.t = threading.Thread(target=self._run, daemon=True, name="trishula-bb")
             self.t.start()
         return self
 
+    def stop(self):
+        self._stop = True
+
     def _run(self):
-        while True:
+        while not self._stop:
             try:
                 self.step()
                 self.status["error"] = None

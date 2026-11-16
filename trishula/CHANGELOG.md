@@ -3,6 +3,15 @@
 Semantic versioning: MAJOR.MINOR.PATCH. The running version is shown in the app's
 status bar, every tab footer, and the Recorder diagnostics panel.
 
+## v0.36.0 — 2026-11-16 · SPX BB is its own app
+- New entry file `spxbb.py`: a second Streamlit app (same repo, same secrets copied over, nothing new). Own slim
+  tastytrade feed (`core/bbfeed.py`): SPX spot, bid/ask on every SPXW strike of the two SPX BB expiries (21:00 ET roll),
+  SPX 1-min candles. Tracker, Telegram alerts, edge model, charts and controls unchanged. Password = APP_PASSWORD.
+- TRISHULA: SPX BB tab, its tracker / alerts and the all-strikes quote subscription removed (the 5 s redraws, the 5 s
+  scan and ~1,000+ extra quoted symbols no longer share TRISHULA's CPU).
+- Tracker: stop() so a newer version's tracker replaces the old one without double alerts.
+- Settings + edge history stay on the trishula-state branch, so they carry over.
+
 ## v0.35.1 — 2026-11-16 · SPX BB control bar tidied
 - Controls in one row of three bordered boxes: VIEW (expiry · min bid), ALERTS (0DTE / 1DTE on-off + jump, with the
   rules in the header), TELEGRAM (status + send test). Labels moved into small headers. Display only.
