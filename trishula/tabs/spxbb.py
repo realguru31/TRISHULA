@@ -270,19 +270,24 @@ def render(trk: BB.Tracker):
         st.info("SPX BB: waiting for the recorder's expiries…")
         return
     labels = {lab: f"{lab} · {dt.date.fromisoformat(d):%a %d %b}" + (" (EXPIRED)" if x else "") for lab, d, x in exps}
-    c0, c1, c2, c3, c4 = st.columns([3, 1.2, 1.2, 1.2, 1.6])
+    c0, c2, c4 = st.columns([3, 1.2, 1.6])
     mode = trk.cfg["mode"] if trk.cfg["mode"] in labels else "0DTE"
-    pick = c0.radio("Expiry", list(labels), index=list(labels).index(mode), horizontal=True,
+    pick = c0.radio("Expiry (view)", list(labels), index=list(labels).index(mode), horizontal=True,
                     format_func=lambda k: labels[k], key="bb_mode")
-    thr = c1.selectbox("Alert threshold (pts)", BB.THRESHOLDS, index=BB.THRESHOLDS.index(int(trk.cfg["threshold"]))
-                       if int(trk.cfg["threshold"]) in BB.THRESHOLDS else 1, key="bb_thr")
     mb = c2.number_input("Min bid", 0.05, 1.00, float(trk.cfg["min_bid"]), 0.05, format="%.2f", key="bb_mb")
-    al = c3.toggle("Telegram alerts", bool(trk.cfg["alerts"]), key="bb_al", disabled=not trk.tg_ok)
     if c4.button("📨 test Telegram", key="bb_test", disabled=not trk.tg_ok):
         trk.send(f"✅ TRISHULA SPX BB test · {now_et():%a %H:%M:%S} ET")
-    trk.set(mode=pick, threshold=int(thr), min_bid=round(float(mb), 2), alerts=bool(al))
     c4.caption("Telegram: " + ("not configured (TG_BOT_TOKEN / TG_CHAT_ID in secrets)" if not trk.tg_ok
                                else (trk.status.get("tg") or "ready")))
+    a0, t0, a1, t1, note = st.columns([1.3, 1.1, 1.3, 1.1, 3])
+    _ti = lambda v: BB.THRESHOLDS.index(int(v)) if int(v) in BB.THRESHOLDS else 1
+    al0 = a0.toggle("Alert 0DTE", bool(trk.cfg["alert0"]), key="bb_al0", disabled=not trk.tg_ok)
+    th0 = t0.selectbox("0DTE jump (pts)", BB.THRESHOLDS, index=_ti(trk.cfg["thr0"]), key="bb_th0")
+    al1 = a1.toggle("Alert 1DTE", bool(trk.cfg["alert1"]), key="bb_al1", disabled=not trk.tg_ok)
+    th1 = t1.selectbox("1DTE jump (pts)", BB.THRESHOLDS, index=_ti(trk.cfg["thr1"]), key="bb_th1")
+    note.caption("Alerts fire whatever the view shows: 0DTE always · 1DTE only 15:00–21:00 ET. "
+                 "Each expiry keeps its own edge level (no repeats).")
+    trk.set(mode=pick, min_bid=round(float(mb), 2), alert0=bool(al0), thr0=int(th0), alert1=bool(al1), thr1=int(th1))
     _live(trk)
 
 

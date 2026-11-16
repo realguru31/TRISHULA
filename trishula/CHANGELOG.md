@@ -3,6 +3,16 @@
 Semantic versioning: MAJOR.MINOR.PATCH. The running version is shown in the app's
 status bar, every tab footer, and the Recorder diagnostics panel.
 
+## v0.31.0 — 2026-11-16 · SPX BB alerts: both expiries, 1DTE only 15:00–21:00 ET, "EDGE"
+- Alerts no longer follow the view toggle (the saved toggle was 1DTE, so 0DTE never alerted). Now both expiries
+  alert whatever any tab shows: **0DTE always** (while live) · **1DTE only 15:00–21:00 ET**.
+- Separate **Alert 0DTE / Alert 1DTE** switches, each with its own jump size (5–50 pts, default 10), saved;
+  an old single threshold carries over to both.
+- Edge levels are kept per expiry date: tomorrow's expiry keeps its level when it turns 0DTE at 21:00. Outside its
+  window (or switched off) the level follows the edge silently, so the first alert after 15:00 is measured from the
+  edge at that time, not from hours earlier.
+- Telegram text says **CALL EDGE / PUT EDGE** (was "WALL"). Sold-strike warnings apply to the expiry being viewed.
+
 ## v0.30.4 — 2026-11-15 · SPX BB model: one small box per side + best-ratio star
 - The combined table is replaced by a box above each chart (puts above the put chart, calls above the call chart):
   SAFEST, 2nd SAFEST, Furthest put / Furthest call (the last live bid) and ★ Best ratio — strike, history move,

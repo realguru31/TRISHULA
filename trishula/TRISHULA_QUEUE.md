@@ -4,6 +4,7 @@ Deployed: **v0.17.0**. Nothing gets built until the user types **APPROVE**. Depl
 Rules unchanged: whole zip every time (delete trishula/ → unzip → commit → Reboot app) · version on screen + CHANGELOG ·
 secrets only in Streamlit · one repo, no GitHub tokens · Colab scripts outside the repo, both tokens prefilled.
 
+## ✅ BUILT v0.31.0 (APPROVE 16 Nov 11:57 Doha): alerts both expiries (0DTE always, 1DTE 15:00–21:00 ET), per-expiry switches + jumps, EDGE wording
 ## ✅ BUILT v0.30.4 (APPROVE 15 Nov 14:50 ET): per-side boxes (SAFEST, 2nd, furthest, best-ratio star)
 ## ✅ BUILT v0.30.3 (APPROVE 15 Nov 14:42 ET): model charts spot → last bid +2 % of that strike, spot line
 ## ✅ BUILT v0.30.2 (APPROVE 15 Nov 14:36 ET): model charts widened to the furthest live bid

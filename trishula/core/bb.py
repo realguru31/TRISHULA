@@ -5,12 +5,13 @@
               (SPX, or the option-implied synthetic spot pre-market / after the close).
   Labels    = SPX BB rolls at 21:00 ET (only this tab): before 21:00 "0DTE" = today, "1DTE" = next expiry; from
               21:00 the next expiry becomes 0DTE. After 16:00 today's 0DTE shows EXPIRED with its edges frozen.
-  Alerts    = for the selected toggle's expiry only. An edge alerts when it is >= threshold points BEYOND the last
+  Alerts    = v0.31.0: 0DTE always, 1DTE only 15:00–21:00 ET — both whatever the view toggle shows, each with its
+              own on/off and jump size. An edge alerts when it is >= threshold points BEYOND the last
               alerted strike, away from spot (high-water mark — inward moves never re-trigger). Plus ONE warning
               when an edge reaches one of your sold strikes (once per strike and expiry — no repeats).
               No alerts on stale quotes (> 120 s) or in the 09:15–09:30 ET session gap.
   Secrets   = TG_BOT_TOKEN / TG_CHAT_ID from Streamlit secrets (never in the code).
-  Config    = shared (one app, one trader): toggle, threshold, min bid, alerts on/off, sold strikes — saved to
+  Config    = shared (one app, one trader): toggle, min bid, per-expiry alerts + jumps, sold strikes — saved to
               state/bb_config.json on the trishula-state branch so a reboot keeps it.
 """
 from __future__ import annotations
@@ -27,7 +28,9 @@ BB_ROLL = dt.time(21, 0)
 THRESHOLDS = [5, 10, 15, 20, 25, 30, 40, 50]
 CHECK_S = 15
 CFG_PATH = "state/bb_config.json"
-DEFAULTS = {"mode": "0DTE", "threshold": 10, "min_bid": 0.05, "alerts": True, "sold_call": 0.0, "sold_put": 0.0}
+DEFAULTS = {"mode": "0DTE", "min_bid": 0.05, "sold_call": 0.0, "sold_put": 0.0,
+            "alert0": True, "thr0": 10, "alert1": True, "thr1": 10}       # v0.31.0: per-expiry alerts
+ONE_DTE_FROM, ONE_DTE_TO = dt.time(15, 0), BB_ROLL                       # 1DTE alerts only 15:00–21:00 ET
 
 
 class Tracker:
@@ -40,12 +43,13 @@ class Tracker:
         self.warned: dict = {}                     # (exp, side, sold) → warned once
         self.seen: set = set()
         self.status = {"last": None, "error": None, "tg": None}
-        self._mk = None
         self.t = None
         try:
             saved = ST.read_file(CFG_PATH)
             if isinstance(saved, dict):
                 self.cfg.update({k: saved[k] for k in DEFAULTS if k in saved})
+                if "threshold" in saved and "thr0" not in saved:      # pre-0.31 single threshold → both
+                    self.cfg["thr0"] = self.cfg["thr1"] = int(saved["threshold"])
         except Exception:                          # noqa: BLE001
             pass
 
@@ -154,25 +158,31 @@ class Tracker:
             rows.append((now.isoformat(timespec="seconds"), round(spot, 2), src, *ce, *pe))
             if len(rows) > 6000:
                 del rows[:len(rows) - 6000]
-            if lab == self.cfg["mode"]:
-                self._alerts(lab, exp, spot, src, e, now)
+            self._alerts(lab, exp, spot, src, e, now)       # v0.31.0: both expiries, whatever the view toggle
+        live_exps = {d for _, d, _ in self.expiries(now)}
+        for k in [k for k in self.marks if k[0] not in live_exps]:
+            self.marks.pop(k, None)
         for k in [k for k in self.series if k not in self.seen]:
             self.series.pop(k, None)
         while len(self.series) > 3:
             self.series.pop(sorted(self.series)[0], None)
         self.status["last"] = now.strftime("%H:%M:%S")
 
+    def alert_window(self, lab, now) -> bool:
+        """0DTE: always (while live) · 1DTE: only 15:00–21:00 ET."""
+        if lab == "1DTE":
+            return ONE_DTE_FROM <= now.time() < ONE_DTE_TO
+        return True
+
     def _alerts(self, lab, exp, spot, src, e, now):
-        mk = (lab, exp)
-        if mk != self._mk:                         # toggle / expiry changed → fresh high-water marks
-            self._mk, self.marks = mk, {}
-        if not self.cfg.get("alerts"):
-            return
-        if dt.time(9, 15) <= now.time() < dt.time(9, 30):
-            return
-        if e["newest_ms"] and time.time() * 1000 - e["newest_ms"] > 120_000:
-            return
-        thr = float(self.cfg["threshold"])
+        """Edge levels are kept per EXPIRY DATE (marks[(exp, side)]), so tomorrow's expiry keeps its level when it
+        turns from 1DTE into 0DTE at 21:00. Outside its window / switched off, the level follows the edge silently,
+        so the first alert after 15:00 is measured from the edge at 15:00, not from hours earlier."""
+        n = "0" if lab == "0DTE" else "1"
+        live = (bool(self.cfg.get(f"alert{n}")) and self.alert_window(lab, now)
+                and not (dt.time(9, 15) <= now.time() < dt.time(9, 30))
+                and not (e["newest_ms"] and time.time() * 1000 - e["newest_ms"] > 120_000))
+        thr = float(self.cfg.get(f"thr{n}") or 10)
         dlab = f"{lab} {dt.date.fromisoformat(exp):%a %d %b}"
         for side, edge, sgn in (("call", e["ce"], 1), ("put", e["pe"], -1)):
             if edge is None:
@@ -181,18 +191,21 @@ class Tracker:
             last = self.marks.get((exp, side))
             if last is None:
                 self.marks[(exp, side)] = k
+            elif not live:
+                if sgn * (k - last) > 0:               # follow outward silently
+                    self.marks[(exp, side)] = k
             elif sgn * (k - last) >= thr - 1e-9:
                 self.marks[(exp, side)] = k
                 self.alerts.append((now.isoformat(timespec="seconds"), exp, side, k))
                 self.alerts = self.alerts[-300:]
-                self.send(f"{'🟢' if side == 'call' else '🔴'} SPX {dlab} {side.upper()} WALL "
+                self.send(f"{'🟢' if side == 'call' else '🔴'} SPX {dlab} {side.upper()} EDGE "
                           f"{'↑' if sgn > 0 else '↓'} {last:,.0f} → {k:,.0f} ({k - last:+,.0f} pts)\n"
                           f"{k:,.0f}{'C' if side == 'call' else 'P'} bid {b:.2f} / ask {a:.2f} "
                           f"(min bid {self.cfg['min_bid']:.2f})\n"
                           f"spot {spot:,.2f}{'' if src == 'spx' else ' (' + src + ')'} · {side} dist "
                           f"{abs(k - spot):,.0f} · {now:%H:%M:%S} ET")
             sold = float(self.cfg.get(f"sold_{side}") or 0)
-            if sold > 0:
+            if sold > 0 and live and lab == self.cfg["mode"]:    # sold strikes = the expiry you are viewing
                 through = (k >= sold) if side == "call" else (k <= sold)
                 key = (exp, side, sold)
                 if through and not self.warned.get(key):
