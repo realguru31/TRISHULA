@@ -3,6 +3,13 @@
 Semantic versioning: MAJOR.MINOR.PATCH. The running version is shown in the app's
 status bar, every tab footer, and the Recorder diagnostics panel.
 
+## v0.33.0 — 2026-11-16 · SPX BB every 5 seconds
+- Tracker checks every 5 s (was 15): edges, chart points and Telegram alerts react within ~5 s.
+- Live section of the tab refreshes every 5 s (was 15); the two charts are rebuilt only when their data changed,
+  otherwise the identical figures are re-sent.
+- Chart history stores a point only when an edge or its quote changed, spot moved ≥ 0.50, or once a minute — a full
+  day still fits (cap raised to 12,000 points per expiry). Tracker part needs a reboot.
+
 ## v0.32.1 — 2026-11-16 · day zip carries the long-dated book
 - The day zip (📦 / 📤 / the 16:05 GitHub upload) now includes book.parquet — the long-dated book as at the send
   (sym, exp, strike, cp, type, iv, gamma, oi, volume for every subscribed expiry beyond 0/1DTE) — and

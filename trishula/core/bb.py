@@ -26,7 +26,7 @@ from .timeutil import now_et
 
 BB_ROLL = dt.time(21, 0)
 THRESHOLDS = [5, 10, 15, 20, 25, 30, 40, 50]
-CHECK_S = 15
+CHECK_S = 5                 # v0.33.0: was 15
 CFG_PATH = "state/bb_config.json"
 DEFAULTS = {"mode": "0DTE", "min_bid": 0.05, "sold_call": 0.0, "sold_put": 0.0,
             "alert0": True, "thr0": 10, "alert1": True, "thr1": 10,       # v0.31.0: per-expiry alerts
@@ -156,9 +156,15 @@ class Tracker:
                 continue
             ce, pe = e["ce"] or (None, None, None), e["pe"] or (None, None, None)
             rows = self.series.setdefault(exp, [])
-            rows.append((now.isoformat(timespec="seconds"), round(spot, 2), src, *ce, *pe))
-            if len(rows) > 6000:
-                del rows[:len(rows) - 6000]
+            row = (now.isoformat(timespec="seconds"), round(spot, 2), src, *ce, *pe)
+            last = rows[-1] if rows else None
+            # v0.33.0: store a point only when something changed (edges or their quotes, spot by ≥ 0.50) or once a
+            # minute anyway — checks run every 5 s but a full day still fits the chart history
+            if (last is None or row[3:] != last[3:] or abs(row[1] - last[1]) >= 0.5
+                    or (now - dt.datetime.fromisoformat(last[0])).total_seconds() >= 60):
+                rows.append(row)
+            if len(rows) > 12000:
+                del rows[:len(rows) - 12000]
             self._alerts(lab, exp, spot, src, e, now)       # v0.31.0: both expiries, whatever the view toggle
             if lab == self.cfg["mode"]:
                 self._ask_alerts(lab, exp, spot, src, e, now)

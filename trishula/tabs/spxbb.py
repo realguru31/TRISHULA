@@ -291,7 +291,7 @@ def render(trk: BB.Tracker):
     _live(trk)
 
 
-@st.fragment(run_every=15)
+@st.fragment(run_every=5)                                 # v0.33.0: was 15
 def _live(trk: BB.Tracker):
     mode = trk.cfg["mode"]
     exp, expired = trk.exp_for(mode)
@@ -375,7 +375,16 @@ def _live(trk: BB.Tracker):
                    "red = the edge has reached / passed it")
 
     if df.empty:
-        left.info("chart fills as the tracker samples (every 15 s)")
+        left.info(f"chart fills as the tracker samples (every {BB.CHECK_S} s)")
+        return
+    # v0.33.0: build the two charts only when their data changed — otherwise re-send the identical figures
+    sig = (exp, len(df), tuple(df.iloc[-1].astype(str)), len(trk.alerts), sc, sput)
+    cache = st.session_state.get("_bb_figs")
+    if cache and cache[0] == sig:
+        with left:
+            st.plotly_chart(cache[1], width="stretch", key="bb_w")
+        with right:
+            st.plotly_chart(cache[2], width="stretch", key="bb_e")
         return
     d = df.dropna(subset=["ce", "pe"])
     t = d["t"]
@@ -384,6 +393,7 @@ def _live(trk: BB.Tracker):
         f = _fig("0.05-bid width (pts) — call edge − put edge")
         f.add_scatter(x=t, y=d["ce"] - d["pe"], mode="lines", line=dict(color="#ab47bc", width=2), name="width")
         st.plotly_chart(f, width="stretch", key="bb_w")
+        fw = f
     # ── right: furthest 0.05-bid strikes, bands spot → edge ────────────────────────
     with right:
         f = _fig("Furthest 0.05-bid strikes — call (blue) vs put (magenta)")
@@ -404,3 +414,4 @@ def _live(trk: BB.Tracker):
         if sput:
             f.add_hline(y=sput, line=dict(color=MAG, dash="dot", width=1), annotation_text=f"sold {sput:,.0f}P")
         st.plotly_chart(f, width="stretch", key="bb_e")
+    st.session_state["_bb_figs"] = (sig, fw, f)
