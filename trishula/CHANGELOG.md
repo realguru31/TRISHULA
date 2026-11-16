@@ -3,6 +3,10 @@
 Semantic versioning: MAJOR.MINOR.PATCH. The running version is shown in the app's
 status bar, every tab footer, and the Recorder diagnostics panel.
 
+## v0.35.1 — 2026-11-16 · SPX BB control bar tidied
+- Controls in one row of three bordered boxes: VIEW (expiry · min bid), ALERTS (0DTE / 1DTE on-off + jump, with the
+  rules in the header), TELEGRAM (status + send test). Labels moved into small headers. Display only.
+
 ## v0.35.0 — 2026-11-16 · Book levels: 2 up · 1 balance · 2 down (as Dan)
 - The ladder had 3 tests per side and a "next BAL" line for every rung (11 lines) — not from Dan's material. Now:
   UP TEST + UP 2, BALANCE, DN TEST + DN 2 (the guide's upper / lower test, anchor, and "second test levels").

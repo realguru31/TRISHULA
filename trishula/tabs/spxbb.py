@@ -270,23 +270,30 @@ def render(trk: BB.Tracker):
         st.info("SPX BB: waiting for the recorder's expiries…")
         return
     labels = {lab: f"{lab} · {dt.date.fromisoformat(d):%a %d %b}" + (" (EXPIRED)" if x else "") for lab, d, x in exps}
-    c0, c2, c4 = st.columns([3, 1.2, 1.6])
-    mode = trk.cfg["mode"] if trk.cfg["mode"] in labels else "0DTE"
-    pick = c0.radio("Expiry (view)", list(labels), index=list(labels).index(mode), horizontal=True,
-                    format_func=lambda k: labels[k], key="bb_mode")
-    mb = c2.number_input("Min bid", 0.05, 1.00, float(trk.cfg["min_bid"]), 0.05, format="%.2f", key="bb_mb")
-    if c4.button("📨 test Telegram", key="bb_test", disabled=not trk.tg_ok):
-        trk.send(f"✅ TRISHULA SPX BB test · {now_et():%a %H:%M:%S} ET")
-    c4.caption("Telegram: " + ("not configured (TG_BOT_TOKEN / TG_CHAT_ID in secrets)" if not trk.tg_ok
-                               else (trk.status.get("tg") or "ready")))
-    a0, t0, a1, t1, note = st.columns([1.3, 1.1, 1.3, 1.1, 3])
+    # v0.35.1: one tidy bar — VIEW | ALERTS | TELEGRAM, each in its own bordered box, labels inline
     _ti = lambda v: BB.THRESHOLDS.index(int(v)) if int(v) in BB.THRESHOLDS else 1
-    al0 = a0.toggle("Alert 0DTE", bool(trk.cfg["alert0"]), key="bb_al0", disabled=not trk.tg_ok)
-    th0 = t0.selectbox("0DTE jump (pts)", BB.THRESHOLDS, index=_ti(trk.cfg["thr0"]), key="bb_th0")
-    al1 = a1.toggle("Alert 1DTE", bool(trk.cfg["alert1"]), key="bb_al1", disabled=not trk.tg_ok)
-    th1 = t1.selectbox("1DTE jump (pts)", BB.THRESHOLDS, index=_ti(trk.cfg["thr1"]), key="bb_th1")
-    note.caption("Alerts fire whatever the view shows: 0DTE always · 1DTE only 15:00–21:00 ET. "
-                 "Each expiry keeps its own edge level (no repeats).")
+    mode = trk.cfg["mode"] if trk.cfg["mode"] in labels else "0DTE"
+    vbox, abox, tbox = st.columns([4.2, 5.6, 2.2], vertical_alignment="top")
+    with vbox.container(border=True):
+        st.caption("VIEW · expiry · min bid")
+        v1, v2 = st.columns([3, 1.2], vertical_alignment="center")
+        pick = v1.radio("Expiry", list(labels), index=list(labels).index(mode), horizontal=True,
+                        format_func=lambda k: labels[k], key="bb_mode", label_visibility="collapsed")
+        mb = v2.number_input("Min bid", 0.05, 1.00, float(trk.cfg["min_bid"]), 0.05, format="%.2f", key="bb_mb",
+                             label_visibility="collapsed", help="min bid that counts as liquidity")
+    with abox.container(border=True):
+        st.caption("ALERTS · on / off + jump (pts) · 0DTE always · 1DTE 15:00–21:00 ET · no repeats")
+        x1, x2, x3, x4 = st.columns([1.1, 1, 1.1, 1], vertical_alignment="center")
+        al0 = x1.toggle("0DTE", bool(trk.cfg["alert0"]), key="bb_al0", disabled=not trk.tg_ok)
+        th0 = x2.selectbox("0DTE jump", BB.THRESHOLDS, index=_ti(trk.cfg["thr0"]), key="bb_th0",
+                           label_visibility="collapsed")
+        al1 = x3.toggle("1DTE", bool(trk.cfg["alert1"]), key="bb_al1", disabled=not trk.tg_ok)
+        th1 = x4.selectbox("1DTE jump", BB.THRESHOLDS, index=_ti(trk.cfg["thr1"]), key="bb_th1",
+                           label_visibility="collapsed")
+    with tbox.container(border=True):
+        st.caption("TELEGRAM " + ("· not configured" if not trk.tg_ok else f"· {trk.status.get('tg') or 'ready'}"))
+        if st.button("📨 send test", key="bb_test", disabled=not trk.tg_ok, width="stretch"):
+            trk.send(f"✅ TRISHULA SPX BB test · {now_et():%a %H:%M:%S} ET")
     trk.set(mode=pick, min_bid=round(float(mb), 2), alert0=bool(al0), thr0=int(th0), alert1=bool(al1), thr1=int(th1))
     _live(trk)
 
