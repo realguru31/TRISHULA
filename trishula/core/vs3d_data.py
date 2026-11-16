@@ -452,6 +452,7 @@ def level_list(lv) -> list:
     out = []
     if not isinstance(lv, dict):
         return out
+    lv = B.cap_rungs(lv)                                 # v0.35.0: 2 tests per side
     if lv.get("bal"):
         out.append(("bal", float(lv["bal"]["peak"])))
     out += [("up", float(t["peak"])) for t in lv.get("ups", [])]

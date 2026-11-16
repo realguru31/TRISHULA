@@ -201,7 +201,16 @@ def _strength(share, conf):
     return lab
 
 
-RUNGS = 3          # tests listed per side (the ladder); display depth only, not a fit parameter
+RUNGS = 2          # v0.35.0: Dan's 2 tests per side ("even the second test levels") + 1 balance — was 3
+
+
+def cap_rungs(lv):
+    """Trim a Test/Anchor levels dict to RUNGS tests per side (locks saved before v0.35.0 carry 3)."""
+    if isinstance(lv, dict) and lv.get("method") == "dan":
+        lv = dict(lv)
+        for k in ("ups", "dns", "anch_up", "anch_dn"):
+            lv[k] = list(lv.get(k) or [])[:RUNGS]
+    return lv
 
 
 def _lvl(c):
@@ -283,6 +292,7 @@ def key_levels_lines(rows, spot, strad_now, WHT, BULL, BEAR, CYAN, DIM, WARN, re
     """KEY LEVELS card — Dan's Test-Anchor framework (v0.27.0). rows = dealer net contracts per strike.
     Unlocked (preview / lock-forming): levels from `rows` around `spot` ± `strad_now`.
     Locked: levels from `lock` (frozen); `spot` = price now, `status_prices` = closes since the lock."""
+    lock = cap_rungs(lock)
     if lock and lock.get("method") != "dan":
         return _legacy_key_levels_lines(rows, spot, strad_now, WHT, BULL, BEAR, CYAN, DIM, WARN, ref_spot=ref_spot,
                                         open_strad=open_strad, lock=lock, status_prices=status_prices,
@@ -351,7 +361,7 @@ def key_levels_lines(rows, spot, strad_now, WHT, BULL, BEAR, CYAN, DIM, WARN, re
             L.append((f"{name}: no dealer short {'above' if side > 0 else 'below'} spot", DIM, 11, False))
             return
         L.append((f"{name}: {k(tests[0]['peak'])} {desc(tests[0])}{status(tests[0], side)}", col, 12.5, True))
-        for i, t in enumerate(tests):
+        for i, t in enumerate(tests[:-1] if len(tests) > 1 else tests):   # v0.35.0: only between TEST and TEST 2
             a = anchors[i] if i < len(anchors) else None
             nx = tests[i + 1] if i + 1 < len(tests) else None
             word = "above" if side > 0 else "below"
@@ -857,16 +867,16 @@ def book_figure(book, spot, straddle, lo, hi, side="Total", openb=None, signed=N
                 ax.text(_x, y, f"{lab} {y:,.0f}", transform=_tr, ha=_ha, va=_va, fontsize=8, color=col, zorder=7,
                         bbox=dict(fc=BG, ec=col, lw=0.6, pad=1.5))
         _drew = False
-        if isinstance(lock_levels, dict):
+        lock_levels, preview_levels = cap_rungs(lock_levels), cap_rungs(preview_levels)
+        if isinstance(lock_levels, dict):                  # v0.35.0: 2 up · 1 balance · 2 down, as Dan draws them
             if lock_levels.get("bal"):
                 _line(lock_levels["bal"]["peak"], "BALANCE" + lock_suffix, "#e8ecf2", (0, (6, 3)))
-            for _t in lock_levels.get("ups", []):
-                _line(_t["peak"], "UP TEST" + lock_suffix, "#3fb950", (0, (5, 3)))
-            for _t in lock_levels.get("dns", []):
-                _line(_t["peak"], "DN TEST" + lock_suffix, "#ef5350", (0, (5, 3)))
-            for _t in (lock_levels.get("anch_up") or []) + (lock_levels.get("anch_dn") or []):
-                if _t:                                     # v0.27.0: ladder anchors (balance after acceptance)
-                    _line(_t["peak"], "next BAL" + lock_suffix, "#e8ecf2", (0, (1, 3)), alpha=0.5)
+            for _i, _t in enumerate(lock_levels.get("ups", [])):
+                _line(_t["peak"], ("UP TEST" if _i == 0 else "UP 2") + lock_suffix, "#3fb950",
+                      (0, (5, 3)) if _i == 0 else (0, (2, 3)), alpha=1.0 if _i == 0 else 0.6)
+            for _i, _t in enumerate(lock_levels.get("dns", [])):
+                _line(_t["peak"], ("DN TEST" if _i == 0 else "DN 2") + lock_suffix, "#ef5350",
+                      (0, (5, 3)) if _i == 0 else (0, (2, 3)), alpha=1.0 if _i == 0 else 0.6)
             _drew = True
         if isinstance(open_levels, dict) and not _drew:
             if open_levels.get("bal"):
@@ -879,10 +889,10 @@ def book_figure(book, spot, straddle, lo, hi, side="Total", openb=None, signed=N
         if (not _drew) and preview_levels:
             if preview_levels.get("bal"):
                 _line(preview_levels["bal"]["peak"], "BALANCE (preview)", "#e8ecf2", (0, (2, 3)), alpha=0.55)
-            for _t in preview_levels.get("ups", []):
-                _line(_t["peak"], "UP TEST (preview)", "#3fb950", (0, (2, 3)), alpha=0.55)
-            for _t in preview_levels.get("dns", []):
-                _line(_t["peak"], "DN TEST (preview)", "#ef5350", (0, (2, 3)), alpha=0.55)
+            for _i, _t in enumerate(preview_levels.get("ups", [])):
+                _line(_t["peak"], ("UP TEST" if _i == 0 else "UP 2") + " (preview)", "#3fb950", (0, (2, 3)), alpha=0.55)
+            for _i, _t in enumerate(preview_levels.get("dns", [])):
+                _line(_t["peak"], ("DN TEST" if _i == 0 else "DN 2") + " (preview)", "#ef5350", (0, (2, 3)), alpha=0.55)
             ax.text(0.005, 0.02, "PREVIEW — opening position · locks 09:25 ET", transform=ax.transAxes,
                     ha="left", va="bottom", fontsize=8, color="#8a93a6", zorder=7)
             _drew = True

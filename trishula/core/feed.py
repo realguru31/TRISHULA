@@ -183,12 +183,15 @@ def book_payload(rec) -> dict | None:
             state, lv = "preview", out.get("levels")
     levels = []
     if lv:
+        lv = B.cap_rungs(lv)                             # v0.35.0: 2 tests per side
         if lv.get("bal"):
             levels.append(dict(name="BALANCE", kind="bal", spx=round(float(lv["bal"]["peak"]), 2), es=es(lv["bal"]["peak"])))
         for t in lv.get("ups", []):
-            levels.append(dict(name="UP TEST", kind="up", spx=round(float(t["peak"]), 2), es=es(t["peak"])))
+            levels.append(dict(name="UP TEST" if not levels or levels[-1]["kind"] != "up" else "UP 2", kind="up",
+                               spx=round(float(t["peak"]), 2), es=es(t["peak"])))
         for t in lv.get("dns", []):
-            levels.append(dict(name="DN TEST", kind="dn", spx=round(float(t["peak"]), 2), es=es(t["peak"])))
+            levels.append(dict(name="DN TEST" if not levels or levels[-1]["kind"] != "dn" else "DN 2", kind="dn",
+                               spx=round(float(t["peak"]), 2), es=es(t["peak"])))
     prof = rows[(rows["strike"] - spot).abs() <= 150]
     # v0.22.0: lock dots (the lock's own profile) + the single-leg (clean-B) profile for the left band
     p935 = {}
