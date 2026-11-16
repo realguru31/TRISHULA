@@ -3,6 +3,12 @@
 Semantic versioning: MAJOR.MINOR.PATCH. The running version is shown in the app's
 status bar, every tab footer, and the Recorder diagnostics panel.
 
+## v0.32.0 — 2026-11-16 · SPX BB: Telegram when a sold strike's ASK reaches a level
+- New setting under the sold boxes, default 0.50: when the ASK of your sold C or sold P reaches it, one Telegram
+  ("⚠️ … your sold 7,100P ASK 0.55 (bid 0.45) ≥ 0.50", spot, that side's edge, time). Regular hours only
+  (09:30–16:00 ET, weekdays) — overnight asks are too wide. Empty sold box = not watched. Once per expiry / side /
+  strike / level; a new strike or level arms it again. Same Telegram channel. Uses the view toggle's expiry.
+
 ## v0.31.1 — 2026-11-16 · SPX BB model charts: far end + 1 %
 - Model charts still start at spot; the far end is now the furthest of (last live bid, edge, SAFEST, 2nd SAFEST)
   + 1 % of that strike (was 2 %). Display only.

@@ -4,6 +4,8 @@ Deployed: **v0.17.0**. Nothing gets built until the user types **APPROVE**. Depl
 Rules unchanged: whole zip every time (delete trishula/ → unzip → commit → Reboot app) · version on screen + CHANGELOG ·
 secrets only in Streamlit · one repo, no GitHub tokens · Colab scripts outside the repo, both tokens prefilled.
 
+## QUEUED (low priority, not approved): recorder `_initial_spot` stamps SPX with RECEIPT time — on (re)connect outside hours Friday's close counts as live SPX for 60 s (seen 16 Nov 05:10: spot 7,561.67 "spx" vs ~7,531 synth). Fix: stamp with the trade's own time (as `_l_trade` does). Needs reboot.
+## ✅ BUILT v0.32.0 (APPROVE 16 Nov 05:13 ET): sold-strike ASK ≥ 0.50 Telegram alert (09:30–16:00 ET, once)
 ## ✅ BUILT v0.31.1 (APPROVE 16 Nov 05:09 ET): model chart far end +1 % (was 2 %)
 ## ✅ BUILT v0.31.0 (APPROVE 16 Nov 11:57 Doha): alerts both expiries (0DTE always, 1DTE 15:00–21:00 ET), per-expiry switches + jumps, EDGE wording
 ## ✅ BUILT v0.30.4 (APPROVE 15 Nov 14:50 ET): per-side boxes (SAFEST, 2nd, furthest, best-ratio star)

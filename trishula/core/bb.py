@@ -29,7 +29,8 @@ THRESHOLDS = [5, 10, 15, 20, 25, 30, 40, 50]
 CHECK_S = 15
 CFG_PATH = "state/bb_config.json"
 DEFAULTS = {"mode": "0DTE", "min_bid": 0.05, "sold_call": 0.0, "sold_put": 0.0,
-            "alert0": True, "thr0": 10, "alert1": True, "thr1": 10}       # v0.31.0: per-expiry alerts
+            "alert0": True, "thr0": 10, "alert1": True, "thr1": 10,       # v0.31.0: per-expiry alerts
+            "ask_alert": 0.50}                                            # v0.32.0: sold-strike ask alert level
 ONE_DTE_FROM, ONE_DTE_TO = dt.time(15, 0), BB_ROLL                       # 1DTE alerts only 15:00–21:00 ET
 
 
@@ -159,6 +160,8 @@ class Tracker:
             if len(rows) > 6000:
                 del rows[:len(rows) - 6000]
             self._alerts(lab, exp, spot, src, e, now)       # v0.31.0: both expiries, whatever the view toggle
+            if lab == self.cfg["mode"]:
+                self._ask_alerts(lab, exp, spot, src, e, now)
         live_exps = {d for _, d, _ in self.expiries(now)}
         for k in [k for k in self.marks if k[0] not in live_exps]:
             self.marks.pop(k, None)
@@ -214,6 +217,27 @@ class Tracker:
                     self.send(f"⚠️ SPX {dlab} 0.05 {side.upper()} EDGE REACHED YOUR SOLD {sold:,.0f}"
                               f"{'C' if side == 'call' else 'P'}\nedge {k:,.0f} · your strike bid {sb:.2f} / ask {sa:.2f}"
                               f" · spot {spot:,.2f} · {now:%H:%M:%S} ET")
+
+    def _ask_alerts(self, lab, exp, spot, src, e, now):
+        """v0.32.0: Telegram once when the ASK of your sold C / sold P reaches cfg['ask_alert'] (default 0.50).
+        Regular hours only (09:30–16:00 ET, weekdays) — overnight asks are too wide to mean anything. Empty sold box
+        (0) = not watched. Once per (expiry, side, strike, level); a new strike or level arms it again."""
+        lvl = float(self.cfg.get("ask_alert") or 0)
+        if lvl <= 0 or now.weekday() >= 5 or not (dt.time(9, 30) <= now.time() < dt.time(16, 0)):
+            return
+        dlab = f"{lab} {dt.date.fromisoformat(exp):%a %d %b}"
+        for side, cp in (("call", 1), ("put", -1)):
+            k = float(self.cfg.get(f"sold_{side}") or 0)
+            if k <= 0:
+                continue
+            b, a = self.quote(exp, k, cp)
+            key = ("ask", exp, side, k, lvl)
+            if a == a and a >= lvl - 1e-9 and not self.warned.get(key):
+                self.warned[key] = True
+                edge = (e.get("ce") if side == "call" else e.get("pe")) or (float("nan"),)
+                self.send(f"⚠️ SPX {dlab} · your sold {k:,.0f}{'C' if side == 'call' else 'P'} ASK {a:.2f}"
+                          f" (bid {b:.2f}) ≥ {lvl:.2f}\nspot {spot:,.2f}{'' if src == 'spx' else ' (' + src + ')'}"
+                          f" · {side} edge {edge[0]:,.0f} · {now:%H:%M:%S} ET")
 
     # ── thread ──────────────────────────────────────────────────────────────────
     def start(self):

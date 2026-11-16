@@ -348,7 +348,9 @@ def _live(trk: BB.Tracker):
                              key="bb_sc", help="0 = none")
         sput = s2.number_input("sold P", 0.0, 20000.0, float(trk.cfg.get("sold_put") or 0.0), 5.0, format="%.0f",
                                key="bb_sp", help="0 = none")
-        trk.set(sold_call=float(sc), sold_put=float(sput))
+        aa = st.number_input("Telegram when a sold strike's ASK reaches (09:30–16:00 ET)", 0.05, 50.0,
+                             float(trk.cfg.get("ask_alert") or 0.50), 0.05, format="%.2f", key="bb_aa")
+        trk.set(sold_call=float(sc), sold_put=float(sput), ask_alert=round(float(aa), 2))
         rows = ""
         for side, k, edge, cp, col in (("C", sc, ce, 1, BLUE), ("P", sput, pe, -1, MAG)):
             if not k:
