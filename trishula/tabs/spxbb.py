@@ -19,10 +19,18 @@ def _fig(title, h=360):
     f = go.Figure()
     f.update_layout(template="plotly_dark", paper_bgcolor="#0e1117", plot_bgcolor="#0e1117", height=h,
                     margin=dict(l=8, r=8, t=36, b=8), title=dict(text=title, x=0.01, font=dict(size=13)),
-                    showlegend=False, hovermode="x unified")
+                    showlegend=False, hovermode="x unified",
+                    uirevision=f"bb-{title[:24]}")       # v0.40.0: your zoom / pan survives the refreshes
     f.update_yaxes(side="right", gridcolor="rgba(255,255,255,0.06)")
     f.update_xaxes(gridcolor="rgba(255,255,255,0.04)")
     return f
+
+
+REFRESH = {"5 s": 5, "10 s": 10, "30 s": 30, "60 s": 60, "⏸ pause": None}   # v0.40.0: screen only
+
+
+def _every():
+    return REFRESH.get(st.session_state.get("bb_refresh", "10 s"), 10)
 
 
 def _cell(txt, bg="transparent", fg="#e6edf3", bold=False, size="1.0em"):
@@ -191,12 +199,11 @@ def _model_block(trk: BB.Tracker):
     if cur != m["mode"]:
         st.warning(f"These results were run for **{m['mode']}** — the toggle is now on {cur}. "
                    "Press Run model to refresh.")
-    _model_live(trk)
+    st.fragment(run_every=_every())(_model_live)(trk)
     st.caption(MODEL_NOTE)
     st.divider()
 
 
-@st.fragment(run_every=5)                                 # v0.37.0: bids / ★ / ratios live, curves frozen at the run
 def _model_live(trk: BB.Tracker):
     m0 = st.session_state.get("bb_model")
     if not m0 or m0.get("error"):
@@ -294,14 +301,17 @@ def render(trk: BB.Tracker):
     mode = "0DTE" if "0DTE" in labels else list(labels)[0]     # v0.38.0: a new page always opens on 0DTE
     vbox, abox, tbox = st.columns([4.2, 5.6, 2.2], vertical_alignment="top")
     with vbox.container(border=True):
-        st.caption("VIEW · expiry · min bid")
-        v1, v2 = st.columns([3, 1.2], vertical_alignment="center")
+        st.caption("VIEW · expiry · min bid · screen refresh (alerts always check every 5 s)")
+        v1, v2, v3 = st.columns([3, 1.2, 1.4], vertical_alignment="center")
         pick = v1.radio("Expiry", list(labels), index=list(labels).index(mode), horizontal=True,
                         format_func=lambda k: labels[k], key="bb_mode", label_visibility="collapsed")
         mb = v2.number_input("Min bid", 0.05, 1.00, float(trk.cfg["min_bid"]), 0.05, format="%.2f", key="bb_mb",
                              label_visibility="collapsed", help="min bid that counts as liquidity")
+        v3.selectbox("Screen refresh", list(REFRESH), index=1, key="bb_refresh", label_visibility="collapsed",
+                     help="how often the screen redraws · ⏸ pause freezes it · the tracker + Telegram alerts are not "
+                          "affected")
     with abox.container(border=True):
-        st.caption("ALERTS · on / off + jump (pts) · 0DTE always · 1DTE 15:00–21:00 ET · no repeats")
+        st.caption("ALERTS · on / off + jump (pts) · 0DTE 09:30–16:00 · 1DTE 15:00–21:00 ET · no repeats")
         x1, x2, x3, x4 = st.columns([1.1, 1, 1.1, 1], vertical_alignment="center")
         al0 = x1.toggle("0DTE", bool(trk.cfg["alert0"]), key="bb_al0", disabled=not trk.tg_ok)
         th0 = x2.selectbox("0DTE jump", BB.THRESHOLDS, index=_ti(trk.cfg["thr0"]), key="bb_th0",
@@ -314,10 +324,9 @@ def render(trk: BB.Tracker):
         if st.button("📨 send test", key="bb_test", disabled=not trk.tg_ok, width="stretch"):
             trk.send(f"✅ TRISHULA SPX BB test · {now_et():%a %H:%M:%S} ET")
     trk.set(mode=pick, min_bid=round(float(mb), 2), alert0=bool(al0), thr0=int(th0), alert1=bool(al1), thr1=int(th1))
-    _live(trk)
+    st.fragment(run_every=_every())(_live)(trk)              # v0.40.0: screen refresh from the VIEW box
 
 
-@st.fragment(run_every=5)                                 # v0.33.0: was 15
 def _live(trk: BB.Tracker):
     mode = trk.cfg["mode"]
     exp, expired = trk.exp_for(mode)

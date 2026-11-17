@@ -3,6 +3,11 @@
 Semantic versioning: MAJOR.MINOR.PATCH. The running version is shown in the app's
 status bar, every tab footer, and the Recorder diagnostics panel.
 
+## SPX BB app v0.40.0 — 2026-11-17 · screen refresh selector, zoom kept
+- VIEW box: screen refresh 5 s / 10 s (default) / 30 s / 60 s / ⏸ pause — redraws of the live charts + the model's
+  live bids only; the tracker and Telegram alerts still check every 5 s.
+- Charts keep your zoom / pan across refreshes (double-click resets). ALERTS caption: 0DTE 09:30–16:00.
+
 ## SPX BB app v0.39.0 — 2026-11-17 · charts show today's session only
 - Both live charts: 09:30 ET → now (overnight / premarket: since the 21:00 roll; an expired expiry: its 09:30–16:00).
   The y-axis fits that window, so a 6850 → 6450 put-edge move fills the chart instead of a sliver. Display only.
