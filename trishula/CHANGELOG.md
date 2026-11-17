@@ -3,6 +3,11 @@
 Semantic versioning: MAJOR.MINOR.PATCH. The running version is shown in the app's
 status bar, every tab footer, and the Recorder diagnostics panel.
 
+## SPX BB app v0.42.0 — 2026-11-17 · no commas in strikes, bigger labels, 0.5 % buffer
+- Strikes without thousands commas everywhere in SPX BB (tables, chart labels, hovers, Telegram). SPX prices keep theirs.
+- Model chart labels bigger: SOLD 15, SAFEST / 2nd SAFEST / SPX 13.
+- Model chart x-range: spot → furthest of (last live bid, edge, SAFEST, 2nd SAFEST, sold strike) + 0.5 % (was 1 %).
+
 ## SPX BB app v0.41.0 — 2026-11-17 · sold strikes: white lines + tied to their expiry
 - Model charts: bold white SOLD line at your sold put / call; the chart widens to keep it in view.
 - Live edge chart: sold lines white dotted (both sides).

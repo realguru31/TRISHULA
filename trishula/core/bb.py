@@ -261,11 +261,11 @@ class Tracker:
                 self.alerts.append((now.isoformat(timespec="seconds"), exp, side, k))
                 self.alerts = self.alerts[-300:]
                 self.send(f"{'🟢' if side == 'call' else '🔴'} SPX {dlab} {side.upper()} EDGE "
-                          f"{'↑' if sgn > 0 else '↓'} {last:,.0f} → {k:,.0f} ({k - last:+,.0f} pts)\n"
-                          f"{k:,.0f}{'C' if side == 'call' else 'P'} bid {b:.2f} / ask {a:.2f} "
+                          f"{'↑' if sgn > 0 else '↓'} {last:.0f} → {k:.0f} ({k - last:+.0f} pts)\n"
+                          f"{k:.0f}{'C' if side == 'call' else 'P'} bid {b:.2f} / ask {a:.2f} "
                           f"(min bid {self.cfg['min_bid']:.2f})\n"
                           f"spot {spot:,.2f}{'' if src == 'spx' else ' (' + src + ')'} · {side} dist "
-                          f"{abs(k - spot):,.0f} · {now:%H:%M:%S} ET")
+                          f"{abs(k - spot):.0f} · {now:%H:%M:%S} ET")
             sold = self.sold_for(side, exp)
             if sold > 0 and live:                               # v0.41.0: the expiry the strike was sold for
                 through = (k >= sold) if side == "call" else (k <= sold)
@@ -273,8 +273,8 @@ class Tracker:
                 if through and not self.warned.get(key):
                     self.warned[key] = True
                     sb, sa = self.quote(exp, sold, sgn)
-                    self.send(f"⚠️ SPX {dlab} 0.05 {side.upper()} EDGE REACHED YOUR SOLD {sold:,.0f}"
-                              f"{'C' if side == 'call' else 'P'}\nedge {k:,.0f} · your strike bid {sb:.2f} / ask {sa:.2f}"
+                    self.send(f"⚠️ SPX {dlab} 0.05 {side.upper()} EDGE REACHED YOUR SOLD {sold:.0f}"
+                              f"{'C' if side == 'call' else 'P'}\nedge {k:.0f} · your strike bid {sb:.2f} / ask {sa:.2f}"
                               f" · spot {spot:,.2f} · {now:%H:%M:%S} ET")
 
     def _ask_alerts(self, lab, exp, spot, src, e, now):
@@ -294,9 +294,9 @@ class Tracker:
             if a == a and a >= lvl - 1e-9 and not self.warned.get(key):
                 self.warned[key] = True
                 edge = (e.get("ce") if side == "call" else e.get("pe")) or (float("nan"),)
-                self.send(f"⚠️ SPX {dlab} · your sold {k:,.0f}{'C' if side == 'call' else 'P'} ASK {a:.2f}"
+                self.send(f"⚠️ SPX {dlab} · your sold {k:.0f}{'C' if side == 'call' else 'P'} ASK {a:.2f}"
                           f" (bid {b:.2f}) ≥ {lvl:.2f}\nspot {spot:,.2f}{'' if src == 'spx' else ' (' + src + ')'}"
-                          f" · {side} edge {edge[0]:,.0f} · {now:%H:%M:%S} ET")
+                          f" · {side} edge {edge[0]:.0f} · {now:%H:%M:%S} ET")
 
     # ── thread ──────────────────────────────────────────────────────────────────
     def start(self):

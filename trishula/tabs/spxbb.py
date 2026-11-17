@@ -136,7 +136,7 @@ def _key_table(rows):
             r = dict(r, ratio=float("nan"), cautious_ratio=float("nan"))
             ok = False
         h += (f"<tr><td style='color:{col};font-weight:700;padding:2px 12px'>{name}</td>"
-              + _cell(f"{r['strike']:,.0f}", bold=True) + _cell(mv, fg="#8b949e") + _cell(bid)
+              + _cell(f"{r['strike']:.0f}", bold=True) + _cell(mv, fg="#8b949e") + _cell(bid)
               + _cell(_fmt(r.get("touch"), "pct")) + _cell(_fmt(r.get("el_c"), "c"))
               + _cell(_fmt(r.get("ratio"), "r"), GRN_BG if ok else RED_BG, bold=True)
               + _cell(_fmt(r.get("cautious_ratio"), "r")) + "</tr>")
@@ -170,7 +170,7 @@ def _side_box(side, m, best):
         mv = f"{r['move_pct']:+.2f}% · {r['date']}" if "move_pct" in r else ""
         yr = _fmt(r.get("touch"), "pct").split(" · ")[-1] if r.get("touch") == r.get("touch") else "—"
         h += (f"<tr><td style='color:{col};font-weight:700;padding:2px 10px'>{r['lab']}</td>"
-              + _cell(f"{r['strike']:,.0f}", bold=True) + _cell(mv, fg="#8b949e")
+              + _cell(f"{r['strike']:.0f}", bold=True) + _cell(mv, fg="#8b949e")
               + _cell("no bid" if nob else f"{r['bid']:.2f}") + _cell(yr)
               + _cell(_fmt(ratio, "r"), GRN_BG if ok else RED_BG, bold=True) + "</tr>")
     st.markdown(h + "</table>", unsafe_allow_html=True)
@@ -232,12 +232,12 @@ def _model_live(trk: BB.Tracker):
             sold_k = trk.sold_for(side, m["exp"])                   # v0.41.0: your sold strike, always in view
             if sold_k and ((side == "put" and sold_k < float(m["spot"])) or (side == "call" and sold_k > float(m["spot"]))):
                 keep.append(sold_k)
-            # v0.31.1: spot → the furthest of (last live bid, edge, SAFEST, 2nd SAFEST) + 1 % of that strike
+            # v0.42.0: spot → the furthest of (last live bid, edge, SAFEST, 2nd SAFEST, sold) + 0.5 % of that strike
             sp_ = float(m["spot"])
             if side == "put":
-                lo, hi = min(keep) * 0.99, sp_
+                lo, hi = min(keep) * 0.995, sp_
             else:
-                lo, hi = sp_, max(keep) * 1.01
+                lo, hi = sp_, max(keep) * 1.005
             d = d[(d["strike"] >= lo) & (d["strike"] <= hi)]
             i_ = m["run"].info
             fit = (i_.get(f"{side}_fit") or {}).get("formula", "")
@@ -256,14 +256,14 @@ def _model_live(trk: BB.Tracker):
                 f.add_scatter(x=d["strike"], y=d["bid"] * 100, mode="markers", name="live bid",
                               marker=dict(size=8, color=colr, line=dict(color="#0e1117", width=1)),
                               customdata=np.stack([d["touch"] * 100, d["touch"] * 252, d["el_c"], d["ratio"]], -1),
-                              hovertemplate="%{x:,.0f} · bid %{y:.0f}¢<br>reached %{customdata[0]:.3f}% · "
+                              hovertemplate="%{x:.0f} · bid %{y:.0f}¢<br>reached %{customdata[0]:.3f}% · "
                                             "~%{customdata[1]:.2f}×/yr<br>exp loss %{customdata[2]:.2f}¢ · "
                                             "ratio %{customdata[3]:.2f}<extra></extra>")
             if sold_k:
                 f.add_vline(x=sold_k, line=dict(color="#ffffff", width=3.5))
                 f.add_annotation(x=sold_k, y=0.5, yref="paper", showarrow=False, textangle=-90,
-                                 text=f"<b>SOLD {sold_k:,.0f}{'P' if side == 'put' else 'C'}</b>",
-                                 xshift=-12 if side == "put" else 12, font=dict(color="#ffffff", size=12),
+                                 text=f"<b>SOLD {sold_k:.0f}{'P' if side == 'put' else 'C'}</b>",
+                                 xshift=-14 if side == "put" else 14, font=dict(color="#ffffff", size=15),
                                  bgcolor="rgba(14,17,23,0.85)")
             for n_, sf in enumerate([r for r in m.get("safe", []) if r["side"] == side]):
                 k = sf["strike"]
@@ -271,22 +271,22 @@ def _model_live(trk: BB.Tracker):
                 f.add_vline(x=k, line=dict(color=lc, width=1.6, dash="dash"))
                 outward = (n_ == 0) == (side == "call")      # SAFEST label on its outer side, 2nd on the inner side
                 f.add_annotation(x=k, y=47, xanchor="left" if outward else "right", xshift=6 if outward else -6,
-                                 yanchor="top", align="left" if outward else "right", text=f"<b>{sf['row']}</b><br>{k:,.0f}<br>"
+                                 yanchor="top", align="left" if outward else "right", text=f"<b>{sf['row']}</b><br>{k:.0f}<br>"
                                  f"({sf['move_pct']:+.1f}% {sf['date']})<br>"
                                  + ("no bid" if not sf.get("has_bid", True) or not sf.get("bid")
                                     else f"bid {sf['bid']:.2f}"),
-                                 showarrow=False, font=dict(color=lc, size=11), bgcolor="rgba(14,17,23,0.75)")
+                                 showarrow=False, font=dict(color=lc, size=13), bgcolor="rgba(14,17,23,0.75)")
                 if sf.get("has_bid", True) and sf.get("bid"):
                     f.add_scatter(x=[k], y=[sf["bid"] * 100], mode="markers", showlegend=False, hoverinfo="skip",
                                   marker=dict(symbol="triangle-down", size=15, color=lc, line=dict(color="#fff", width=1)))
             if best is not None:
                 f.add_scatter(x=[best["strike"]], y=[best["bid"] * 100], mode="markers", name="best ratio",
                               marker=dict(symbol="star", size=16, color="#f5c542", line=dict(color="#0e1117", width=1)),
-                              hovertemplate=f"BEST ratio {best['strike']:,.0f} · {best['ratio']:.2f}×<extra></extra>")
+                              hovertemplate=f"BEST ratio {best['strike']:.0f} · {best['ratio']:.2f}×<extra></extra>")
             f.add_vline(x=sp_, line=dict(color="#e6edf3", width=2))
             f.add_annotation(x=sp_, y=1, yref="paper", yanchor="top", showarrow=False, text=f"SPX {sp_:,.2f}",
                              xanchor="right" if side == "put" else "left", xshift=-4 if side == "put" else 4,
-                             font=dict(color="#e6edf3", size=11), bgcolor="rgba(14,17,23,0.8)")
+                             font=dict(color="#e6edf3", size=13), bgcolor="rgba(14,17,23,0.8)")
             f.update_xaxes(range=[lo, hi], title_text="strike")
             f.update_yaxes(range=[0, 50], title_text="¢ per share")
             colw.plotly_chart(f, width="stretch", key=f"bb_m_{side}")
@@ -376,11 +376,11 @@ def _live(trk: BB.Tracker):
                "<td style='color:#8b949e;padding:0 10px;text-align:right'>edge</td>"
                "<td style='color:#8b949e;padding:0 10px;text-align:right'>% spot</td>"
                "<td style='color:#8b949e;padding:0 10px;text-align:right'>bid / ask</td></tr>"
-               f"<tr><td style='color:{BLUE};font-weight:700'>C</td>{_cell(f'{cd:,.0f}')}{_cell(f'{ce:,.0f}', bold=True)}"
+               f"<tr><td style='color:{BLUE};font-weight:700'>C</td>{_cell(f'{cd:.0f}')}{_cell(f'{ce:.0f}', bold=True)}"
                f"{_cell(f'{cd / sp:.2%}', '#0d2a5a')}{_cell(f'{cur.ce_bid:.2f} / {cur.ce_ask:.2f}', fg='#8b949e')}</tr>"
-               f"<tr><td style='color:{MAG};font-weight:700'>P</td>{_cell(f'{pdist:,.0f}')}{_cell(f'{pe:,.0f}', bold=True)}"
+               f"<tr><td style='color:{MAG};font-weight:700'>P</td>{_cell(f'{pdist:.0f}')}{_cell(f'{pe:.0f}', bold=True)}"
                f"{_cell(f'{pdist / sp:.2%}', '#3d0f45')}{_cell(f'{cur.pe_bid:.2f} / {cur.pe_ask:.2f}', fg='#8b949e')}</tr>"
-               f"<tr><td style='font-weight:700'>R</td>{_cell(f'{r_:.2f}', bold=True)}{_cell(f'{ce - pe:,.0f}', bold=True)}"
+               f"<tr><td style='font-weight:700'>R</td>{_cell(f'{r_:.2f}', bold=True)}{_cell(f'{ce - pe:.0f}', bold=True)}"
                f"<td style='color:#8b949e;padding:0 10px'>W</td><td></td></tr></table>")
         st.markdown(tbl, unsafe_allow_html=True)
         st.caption("R = put dist ÷ call dist · W = call edge − put edge")
@@ -418,8 +418,8 @@ def _live(trk: BB.Tracker):
             _, ask = (np.nan, np.nan) if expired else trk.quote(exp, k, cp)
             dpc = (k - sp) / sp if cp > 0 else (sp - k) / sp
             bg = GRN_BG if ok else RED_BG
-            rows += (f"<tr><td style='color:{col};font-weight:700'>{side} {k:,.0f}</td>"
-                     + _cell(f"{buf:+,.0f}", bg, "#7ee2a8" if ok else "#ff8a9a", True)
+            rows += (f"<tr><td style='color:{col};font-weight:700'>{side} {k:.0f}</td>"
+                     + _cell(f"{buf:+.0f}", bg, "#7ee2a8" if ok else "#ff8a9a", True)
                      + _cell("—" if not ask == ask else f"{ask:.2f}", bg)
                      + _cell(f"{dpc:.2%}", "#0d2a5a" if cp > 0 else "#3d0f45") + "</tr>")
         st.markdown("<table style='border-collapse:collapse;font-family:monospace;margin-top:4px'>"
@@ -501,8 +501,8 @@ def _live(trk: BB.Tracker):
                           marker=dict(size=9, color=["#2f8bff" if a[2] == "call" else "#e040fb" for a in al],
                                       line=dict(color="#fff", width=1)), name="alert")
         if sc:
-            f.add_hline(y=sc, line=dict(color="#ffffff", dash="dot", width=1.2), annotation_text=f"sold {sc:,.0f}C")
+            f.add_hline(y=sc, line=dict(color="#ffffff", dash="dot", width=1.2), annotation_text=f"sold {sc:.0f}C")
         if sput:
-            f.add_hline(y=sput, line=dict(color="#ffffff", dash="dot", width=1.2), annotation_text=f"sold {sput:,.0f}P")
+            f.add_hline(y=sput, line=dict(color="#ffffff", dash="dot", width=1.2), annotation_text=f"sold {sput:.0f}P")
         st.plotly_chart(f, width="stretch", key="bb_e")
     st.session_state["_bb_figs"] = (sig, fw, f)

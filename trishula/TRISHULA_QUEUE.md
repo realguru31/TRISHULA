@@ -5,6 +5,7 @@ Rules unchanged: whole zip every time (delete trishula/ → unzip → commit →
 secrets only in Streamlit · one repo, no GitHub tokens · Colab scripts outside the repo, both tokens prefilled.
 
 ## QUEUED (low priority, not approved): recorder `_initial_spot` stamps SPX with RECEIPT time — on (re)connect outside hours Friday's close counts as live SPX for 60 s (seen 16 Nov 05:10: spot 7,561.67 "spx" vs ~7,531 synth). Fix: stamp with the trade's own time (as `_l_trade` does). Needs reboot.
+## ✅ BUILT SPX BB v0.42.0 (APPROVE 17 Nov 13:26 ET): no strike commas, bigger labels, 0.5 % buffer
 ## ✅ BUILT SPX BB v0.41.0 (APPROVE 17 Nov 13:23 ET): white SOLD lines, sold strikes tied to their expiry
 ## ✅ BUILT SPX BB v0.40.1 (APPROVE 17 Nov 13:19 ET): refresh dropdown labelled
 ## ✅ BUILT SPX BB v0.40.0 (APPROVE 17 Nov 13:16 ET): screen refresh selector (default 10 s, pause), zoom kept

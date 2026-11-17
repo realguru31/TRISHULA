@@ -7,4 +7,4 @@ VERSION = "0.36.0"
 BUILD_DATE = "2026-11-12"
 LABEL = f"TRISHULA v{VERSION} ({BUILD_DATE})"
 # v0.37.0: the standalone SPX BB app has its own number, so an SPX BB-only change never restarts TRISHULA's recorder
-BB_VERSION = "0.41.0"
+BB_VERSION = "0.42.0"
