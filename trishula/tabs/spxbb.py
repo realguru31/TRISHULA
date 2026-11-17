@@ -26,6 +26,7 @@ def _fig(title, h=360):
     return f
 
 
+CHART_H = 640          # v0.45.0: live charts as tall as the middle panel
 REFRESH = {"5 s": 5, "10 s": 10, "30 s": 30, "60 s": 60, "⏸ pause": None}   # v0.40.0: screen only
 
 
@@ -450,7 +451,7 @@ def _live(trk: BB.Tracker):
         left.info(f"chart fills as the tracker samples (every {BB.CHECK_S} s)")
         return
     # v0.33.0: build the two charts only when their data changed — otherwise re-send the identical figures
-    sig = (exp, len(df), tuple(df.iloc[-1].astype(str)), len(trk.alerts), sc, sput, len(trk.strad.get(exp) or []),
+    sig = (exp, len(df), tuple(df.iloc[-1].astype(str)), len(trk.alerts), sc, sput, len(trk.strad.get(exp) or []) + len(getattr(trk, 'strad_bf', {}).get(exp) or []),
            now_et().strftime("%H:%M"), round(float(spot), 1) if spot == spot else None)
     cache = st.session_state.get("_bb_figs")
     if cache and cache[0] == sig:
@@ -497,7 +498,7 @@ def _live(trk: BB.Tracker):
     t = d["t"]
     # ── left: 0.05-bid width ────────────────────────────────────────────────────────
     with left:
-        f = _fig("0.05-bid width (pts, right) vs ATM straddle ($, left) — same start")
+        f = _fig("0.05-bid width (pts, right) vs ATM straddle ($, left) — same start", h=CHART_H)
         wv = d["ce"] - d["pe"]
         f.add_scatter(x=t, y=wv, mode="lines", line=dict(color="#ab47bc", width=2, shape="hv"), name="width",
                       hovertemplate="width %{y:.0f} pts<extra></extra>")
@@ -527,7 +528,7 @@ def _live(trk: BB.Tracker):
         fw = f
     # ── right: furthest 0.05-bid strikes, bands spot → edge ────────────────────────
     with right:
-        f = _fig("Furthest 0.05-bid strikes — call (blue) vs put (magenta)")
+        f = _fig("Furthest 0.05-bid strikes — call (blue) vs put (magenta)", h=CHART_H)
         f.add_scatter(x=t, y=d["spot"], mode="lines", line=dict(width=0), hoverinfo="skip")
         f.add_scatter(x=t, y=d["ce"], mode="lines", line=dict(color=BLUE, width=2, shape="hv"),
                       fill="tonexty", fillcolor="rgba(47,139,255,0.18)", name="call edge")

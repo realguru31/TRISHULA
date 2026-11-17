@@ -44,6 +44,8 @@ class Tracker:
         self.series: dict[str, list] = {}          # exp → rows (t, spot, src, ce, ce_b, ce_a, pe, pe_b, pe_a)
         self.alerts: list = []                     # (t, exp, side, strike) — chart markers
         self.strad: dict[str, list] = {}           # v0.43.0: exp → (t minute, ATM strike, straddle mid) once a minute
+        self.strad_bf: dict[str, list] = {}        # v0.45.0: straddle backfilled from 1-minute trade candles
+        self._bf_min: dict[str, str] = {}
         self.mae: dict[str, dict] = {}             # v0.44.0: "exp|side|strike" → worst trade / ask since 09:30
         self.marks: dict = {}                      # (exp, side) → last alerted strike
         self.warned: dict = {}                     # (exp, side, sold) → warned once
@@ -193,6 +195,7 @@ class Tracker:
             if len(rows) > 12000:
                 del rows[:len(rows) - 12000]
             self._straddle(exp, spot, now)
+            self._strad_backfill(exp, now)
             self._mae(exp, now)
             self._alerts(lab, exp, spot, src, e, now)       # v0.31.0: both expiries, whatever the view toggle
             self._ask_alerts(lab, exp, spot, src, e, now)       # v0.41.0: only for the sold strikes' own expiry
@@ -292,12 +295,74 @@ class Tracker:
     def mae_for(self, exp: str, side: str, k: float):
         return self.mae.get(f"{exp}|{side}|{k:.0f}") or {}
 
+    def _strad_backfill(self, exp, now):
+        """v0.45.0: rebuild today's 0DTE ATM straddle from 09:30 out of tastytrade 1-minute TRADE candles (strikes
+        across today's SPX range ± 30, calls + puts), so the line starts at the open whenever the app is loaded.
+        Live mid readings take priority where they exist. Runs once a minute."""
+        import bisect
+        if dt.date.fromisoformat(exp[:10]) != now.date() or now.time() < dt.time(9, 31):
+            return
+        tm = now.strftime("%H:%M")
+        if self._bf_min.get(exp) == tm:
+            return
+        self._bf_min[exp] = tm
+        want = getattr(self.rec, "want_candle", None)
+        oc_all = getattr(self.rec, "ocandles", None)
+        if want is None or oc_all is None:
+            return
+        tz = now_et().tzinfo
+        w0 = int(dt.datetime.combine(now.date(), dt.time(9, 30)).replace(tzinfo=tz).timestamp() * 1000)
+        w1 = int(dt.datetime.combine(now.date(), dt.time(16, 0)).replace(tzinfo=tz).timestamp() * 1000)
+        try:
+            spx = sorted((t, v[3]) for t, v in list(self.rec.candles.items()) if w0 <= t < w1 and v[3] == v[3])
+        except Exception:                          # noqa: BLE001
+            return
+        if not spx:
+            return
+        lo = int((min(c for _, c in spx) - 30) // 5 * 5)
+        hi = int(-(-(max(c for _, c in spx) + 30) // 5) * 5)
+        idx = {}
+        for sym, (ex, k, cp) in list((getattr(self.rec, "bb_meta", {}) or {}).items()):
+            if ex == exp and lo <= k <= hi:
+                idx[(k, cp)] = sym
+        for sym in idx.values():
+            want(sym, w0)
+        legs = {}
+        for key, sym in idx.items():
+            d = oc_all.get(sym) or {}
+            pts = sorted((t, v[1]) for t, v in list(d.items()) if t >= w0 and v[1] == v[1])
+            if pts:
+                legs[key] = ([t for t, _ in pts], [c for _, c in pts])
+        ks = sorted({k for (k, cp) in legs if (k, 1) in legs and (k, -1) in legs})
+        if not ks:
+            return
+        out = []
+        for t, s_ in spx:
+            k = min(ks, key=lambda x: abs(x - s_))
+            v = 0.0
+            for cp in (1, -1):
+                ts, cs = legs[(k, cp)]
+                i = bisect.bisect_right(ts, t) - 1
+                if i < 0:
+                    v = None
+                    break
+                v += cs[i]
+            if v:
+                out.append((dt.datetime.fromtimestamp(t / 1000, tz).replace(tzinfo=None).isoformat(timespec="minutes"),
+                            k, round(v, 2)))
+        self.strad_bf[exp] = out
+
     def strad_frame(self, exp: str):
+        """Live mid readings + the candle backfill for minutes the live recording does not have."""
         import pandas as pd
-        rows = self.strad.get(exp) or []
-        df = pd.DataFrame(rows, columns=["t", "k", "strad"])
+        live = pd.DataFrame(self.strad.get(exp) or [], columns=["t", "k", "strad"])
+        bf = pd.DataFrame(self.strad_bf.get(exp) or [], columns=["t", "k", "strad"])
+        if len(bf) and len(live):
+            bf = bf[~bf["t"].isin(set(live["t"]))]
+        df = pd.concat([x for x in (bf, live) if len(x)]) if (len(bf) or len(live)) else live
         if len(df):
             df["t"] = pd.to_datetime(df["t"])
+            df = df.sort_values("t").reset_index(drop=True)
         return df
 
     def _sold_expiry(self, now):

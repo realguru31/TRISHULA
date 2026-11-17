@@ -3,6 +3,12 @@
 Semantic versioning: MAJOR.MINOR.PATCH. The running version is shown in the app's
 status bar, every tab footer, and the Recorder diagnostics panel.
 
+## SPX BB app v0.45.0 — 2026-11-17 · lighter inputs, taller charts, straddle from 09:30
+- Input fields: lighter fill + visible border (hover / focus brighter); sold C blue edge, sold P magenta edge; their
+  labels bigger. Live charts 640 px tall (fill down to the bottom of the middle panel).
+- ATM straddle backfilled on every load from tastytrade 1-minute trade candles (0DTE strikes across today's SPX range
+  ± 30): the line runs from 09:30; live mid readings take priority where recorded.
+
 ## SPX BB app v0.44.0 — 2026-11-17 · MAE on your sold strikes
 - Sold-strike table: MAE = worst price against you today — highest TRADE from tastytrade 1-minute candles (from 09:30;
   1DTE sold after the close: from 15:00) or highest ASK seen live in RTH, e.g. "0.25 @10:54 T".

@@ -25,6 +25,16 @@ st.markdown("""<style>
 header[data-testid="stHeader"] {background: transparent;}
 .block-container {padding-top: 1rem;}
 div[data-testid="stMetricValue"] {font-size: 1.35rem;}
+/* v0.45.0: input fields stand out from the panels */
+[data-testid="stNumberInputContainer"], .stSelectbox .react-aria-ComboBox > div {
+  background-color: #232c3b !important; border: 1px solid #4a5872 !important; border-radius: 6px !important;}
+[data-testid="stNumberInputContainer"] *, .stSelectbox .react-aria-ComboBox > div * {background-color: transparent !important;}
+[data-testid="stNumberInputContainer"] input, .stSelectbox input {color: #ffffff !important; font-weight: 600 !important;}
+[data-testid="stNumberInputContainer"]:hover, .stSelectbox .react-aria-ComboBox > div:hover {border-color: #6b7d99 !important;}
+[data-testid="stNumberInputContainer"]:focus-within {border-color: #1e90ff !important; box-shadow: 0 0 0 1px #1e90ff66;}
+.st-key-bb_sc [data-testid="stNumberInputContainer"] {border-left: 6px solid #2f8bff !important;}
+.st-key-bb_sp [data-testid="stNumberInputContainer"] {border-left: 6px solid #e040fb !important;}
+.st-key-bb_sc label p, .st-key-bb_sp label p, .st-key-bb_aa label p {font-size: 1.0rem !important; color: #e6edf3 !important; font-weight: 600 !important;}
 </style>""", unsafe_allow_html=True)
 
 missing = [k for k in ("TT_CLIENT_SECRET", "TT_REFRESH_TOKEN") if k not in st.secrets]
