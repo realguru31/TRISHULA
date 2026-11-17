@@ -26,7 +26,7 @@ def _fig(title, h=360):
     return f
 
 
-CHART_H = 640          # v0.45.0: live charts as tall as the middle panel
+CHART_H = 470          # v0.46.0: compact — whole page fits at 80 % browser zoom
 REFRESH = {"5 s": 5, "10 s": 10, "30 s": 30, "60 s": 60, "⏸ pause": None}   # v0.40.0: screen only
 
 
@@ -225,11 +225,11 @@ def _model_live(trk: BB.Tracker):
         return
     m = _price_live(trk, m0)
     i = m["run"].info
-    st.caption(f"curves + SAFEST frozen at the run: spot {i['spot']:,.2f} · {i['run_at_et'][11:16]} ET — press Run "
-               f"model again if SPX has moved a lot · bids live {m['priced_at']:%H:%M:%S} ET")
-    st.caption(f"SAFEST = strike just beyond the biggest one-session move since 1990 on days with VIX ≤ "
-               f"{i.get('vix_bucket', '?')}, measured from {i.get('safest_measured_from', float('nan')):,.2f} — "
-               "has not happened in that history, not cannot happen")
+    st.caption(f"curves + SAFEST frozen at the run: spot {i['spot']:,.2f} · {i['run_at_et'][11:16]} ET · bids live "
+               f"{m['priced_at']:%H:%M:%S} ET", help="Press Run model again if SPX has moved a lot. SAFEST = strike just "
+               f"beyond the biggest one-session move since 1990 on days with VIX ≤ {i.get('vix_bucket', '?')}, measured "
+               f"from {i.get('safest_measured_from', float('nan')):,.2f} — has not happened in that history, not cannot "
+               "happen.")
     t = m["table"]
     if len(t):
         cl, cr = st.columns(2)
@@ -258,7 +258,7 @@ def _model_live(trk: BB.Tracker):
             fit = (i_.get(f"{side}_fit") or {}).get("formula", "")
             f = _fig(f"FAR OTM {m['mode']} {side.upper()}S — market bid vs expected loss · SPX {i_['spot']:,.2f} · "
                      f"VIX {i_['vix']:.2f}<br><span style='font-size:11px;color:#8b949e'>typical move ~ {fit}</span>",
-                     h=420)
+                     h=330)
             f.update_layout(margin=dict(l=8, r=8, t=58, b=8), showlegend=True,
                             legend=dict(orientation="h", y=-0.14, x=0, font=dict(size=11)))
             gx = np.linspace(lo, hi, 160)
@@ -398,12 +398,11 @@ def _live(trk: BB.Tracker):
                f"<tr><td style='font-weight:700'>R</td>{_cell(f'{r_:.2f}', bold=True)}{_cell(f'{ce - pe:.0f}', bold=True)}"
                f"<td style='color:#8b949e;padding:0 10px'>W</td><td></td></tr></table>")
         st.markdown(tbl, unsafe_allow_html=True)
-        st.caption("R = put dist ÷ call dist · W = call edge − put edge")
-        st.markdown(f"<div style='margin:10px 0;padding:8px;border:2px solid #f5c542;border-radius:6px;"
-                    f"text-align:center;font-size:1.6em;font-weight:700;color:#f5c542'>{sp:,.2f}"
+        st.markdown(f"<div style='margin:6px 0;padding:3px;border:2px solid #f5c542;border-radius:6px;"
+                    f"text-align:center;font-size:1.35em;font-weight:700;color:#f5c542'>{sp:,.2f}"
                     f"<span style='font-size:0.45em;color:#8b949e'> {'' if src == 'spx' else src}</span></div>",
                     unsafe_allow_html=True)
-        s1, s2 = st.columns(2)
+        s1, s2, s3 = st.columns([1, 1, 0.8])
         # v0.41.0: the boxes follow the saved value when the tracker clears an expired strike
         for wk, ck in (("bb_sc", "sold_call"), ("bb_sp", "sold_put")):
             cv = float(trk.cfg.get(ck) or 0.0)
@@ -413,8 +412,8 @@ def _live(trk: BB.Tracker):
         hc = "0 = none · tied to the expiry you are viewing when you enter it — clears when that expiry ends"
         sc = s1.number_input("sold C", 0.0, 20000.0, step=5.0, format="%.0f", key="bb_sc", help=hc)
         sput = s2.number_input("sold P", 0.0, 20000.0, step=5.0, format="%.0f", key="bb_sp", help=hc)
-        aa = st.number_input("Telegram when a sold strike's ASK reaches (09:30–16:00 ET)", 0.05, 50.0,
-                             float(trk.cfg.get("ask_alert") or 0.50), 0.05, format="%.2f", key="bb_aa")
+        aa = s3.number_input("ask alert", 0.05, 50.0, float(trk.cfg.get("ask_alert") or 0.50), 0.05, format="%.2f",
+                             key="bb_aa", help="Telegram when a sold strike's ASK reaches this (09:30–16:00 ET)")
         upd = dict(ask_alert=round(float(aa), 2))
         for side, v, wk in (("call", float(sc), "bb_sc"), ("put", float(sput), "bb_sp")):
             if v != float(trk.cfg.get(f"sold_{side}") or 0.0):
@@ -443,9 +442,10 @@ def _live(trk: BB.Tracker):
                     "<td style='color:#8b949e;padding:0 10px;text-align:right'>dist from spot</td>"
                     "<td style='color:#8b949e;padding:0 10px;text-align:right'>MAE</td></tr>"
                     + rows + "</table>", unsafe_allow_html=True)
-        st.caption("buffer = how far your strike sits beyond the last 0.05 bid · green = outside the liquidity, "
-                   "red = the edge has reached / passed it · MAE = worst price against you today: highest trade "
-                   "(T, from 09:30) or highest ask (A, live in RTH)")
+        st.caption("R = put ÷ call dist · W = call − put edge · buffer · MAE",
+                   help="buffer = how far your strike sits beyond the last 0.05 bid · green = outside the liquidity, "
+                        "red = the edge has reached / passed it · MAE = worst price against you today: highest trade "
+                        "(T, from 09:30) or highest ask (A, live in RTH)")
 
     if df.empty:
         left.info(f"chart fills as the tracker samples (every {BB.CHECK_S} s)")

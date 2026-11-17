@@ -23,7 +23,10 @@ st.markdown("""<style>
 #MainMenu, footer, [data-testid="stToolbar"], [data-testid="stDecoration"],
 [data-testid="stStatusWidget"], [class*="viewerBadge"] {display:none !important;}
 header[data-testid="stHeader"] {background: transparent;}
-.block-container {padding-top: 1rem;}
+.block-container {padding-top: 0.6rem; padding-bottom: 0.5rem;}
+html {font-size: 14px;}                                   /* v0.46.0: compact — fits at 80 % zoom */
+[data-testid="stVerticalBlock"] {gap: 0.55rem;}
+[data-testid="stCaptionContainer"] {font-size: 0.78rem;}
 div[data-testid="stMetricValue"] {font-size: 1.35rem;}
 /* v0.45.0: input fields stand out from the panels */
 [data-testid="stNumberInputContainer"], .stSelectbox .react-aria-ComboBox > div {

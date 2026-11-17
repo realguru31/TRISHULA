@@ -3,6 +3,10 @@
 Semantic versioning: MAJOR.MINOR.PATCH. The running version is shown in the app's
 status bar, every tab footer, and the Recorder diagnostics panel.
 
+## SPX BB app v0.46.0 — 2026-11-17 · compact: whole page fits at 80 % zoom
+- Base font 14 px, tighter spacing / captions; model charts 330 px, live charts 470 px; slimmer spot box.
+- sold C / sold P / ask alert on one row; long notes (SAFEST definition, buffer / MAE) behind ⓘ.
+
 ## SPX BB app v0.45.0 — 2026-11-17 · lighter inputs, taller charts, straddle from 09:30
 - Input fields: lighter fill + visible border (hover / focus brighter); sold C blue edge, sold P magenta edge; their
   labels bigger. Live charts 640 px tall (fill down to the bottom of the middle panel).
