@@ -3,6 +3,13 @@
 Semantic versioning: MAJOR.MINOR.PATCH. The running version is shown in the app's
 status bar, every tab footer, and the Recorder diagnostics panel.
 
+## SPX BB app v0.37.0 — 2026-11-17 · edge model: live bids on frozen curves (TRISHULA stays v0.36.0)
+- Run model fits once and FREEZES the expected-loss / cautious curves, SAFEST / 2nd SAFEST and the reference spot.
+  Every 5 s after that the bid dots, ★ best ratio, furthest put/call and the ratio cells re-price from live bids against
+  those frozen curves. Caption shows the run's spot + time and the live-bid time.
+- The SPX BB app has its own version number (core/version.py BB_VERSION), so SPX BB-only pushes never restart
+  TRISHULA's recorder mid-session.
+
 ## v0.36.0 — 2026-11-16 · SPX BB is its own app
 - New entry file `spxbb.py`: a second Streamlit app (same repo, same secrets copied over, nothing new). Own slim
   tastytrade feed (`core/bbfeed.py`): SPX spot, bid/ask on every SPXW strike of the two SPX BB expiries (21:00 ET roll),

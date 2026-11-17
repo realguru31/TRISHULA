@@ -13,7 +13,7 @@ import streamlit as st
 from core import state as ST
 from core.bbfeed import BBFeed
 from core.timeutil import now_et
-from core.version import VERSION
+from core.version import BB_VERSION as VERSION
 from tabs import spxbb as TAB
 
 logging.getLogger("tastytrade").setLevel(logging.WARNING)
@@ -43,6 +43,7 @@ def get_feed(version: str) -> BBFeed:
     if old is not None and getattr(old, "version", None) != version:
         old.stop()
     f = BBFeed(st.secrets["TT_CLIENT_SECRET"], st.secrets["TT_REFRESH_TOKEN"])
+    f.version = version
     builtins._spxbb_feed = f
     return f.start()
 

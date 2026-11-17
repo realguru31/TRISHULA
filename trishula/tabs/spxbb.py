@@ -44,7 +44,14 @@ def _run_model(trk: BB.Tracker):
         st.session_state["bb_model"] = {"error": "no expiry or spot yet"}
         return
     run = EM.run_model(toggle=mode, spot=spot, now_et=now_et().replace(tzinfo=None), spot_source=src)
-    # bids snapshot at the press: every strike of that expiry with a bid, spot out to MAX_RANGE_PCT
+    st.session_state["bb_model"] = dict(run=run, mode=mode, exp=exp, spot=spot, src=src,
+                                        win={"put": run.display_window("put"), "call": run.display_window("call")})
+
+
+def _price_live(trk: BB.Tracker, m: dict) -> dict:
+    """v0.37.0: live bids priced against the FROZEN model run (curves, SAFEST, spot stay as at the press)."""
+    from core import edge_model as EM
+    run, exp, spot = m["run"], m["exp"], float(m["spot"])
     lim = EM.MAX_RANGE_PCT / 100.0
     rows = []
     meta = dict(getattr(trk.rec, "bb_meta", {}) or {})
@@ -66,7 +73,8 @@ def _run_model(trk: BB.Tracker):
         if (side == "call" and spot < k <= spot * (1 + lim)) or (side == "put" and spot * (1 - lim) <= k < spot):
             rows.append(dict(run.price(side, k, q[0]), ask=q[1]))
     tbl = pd.DataFrame(rows).sort_values(["side", "strike"]) if rows else pd.DataFrame()
-    e = trk.edges(exp, spot, float(trk.cfg["min_bid"])) or {}
+    live_spot, _ = trk.rec.spot_now()
+    e = trk.edges(exp, live_spot if live_spot == live_spot else spot, float(trk.cfg["min_bid"])) or {}
     key = []
     for lab, side, k in (("Call edge", "call", (e.get("ce") or (None,))[0]),
                          ("Put edge", "put", (e.get("pe") or (None,))[0]),
@@ -82,8 +90,7 @@ def _run_model(trk: BB.Tracker):
             b, a = trk.quote(exp, float(sf["strike"]), 1 if side == "call" else -1)
             safe.append(dict(run.price(side, sf["strike"], b if b == b else 0.0), row=sf["name"], ask=a,
                              move_pct=sf["move_pct"], date=sf["date"], has_bid=(b == b)))
-    st.session_state["bb_model"] = dict(run=run, mode=mode, exp=exp, spot=spot, src=src, table=tbl, key=key, safe=safe,
-                                        win={"put": run.display_window("put"), "call": run.display_window("call")})
+    return dict(m, table=tbl, key=key, safe=safe, priced_at=now_et())
 
 
 def _fmt(v, kind):
@@ -184,6 +191,20 @@ def _model_block(trk: BB.Tracker):
     if cur != m["mode"]:
         st.warning(f"These results were run for **{m['mode']}** — the toggle is now on {cur}. "
                    "Press Run model to refresh.")
+    _model_live(trk)
+    st.caption(MODEL_NOTE)
+    st.divider()
+
+
+@st.fragment(run_every=5)                                 # v0.37.0: bids / ★ / ratios live, curves frozen at the run
+def _model_live(trk: BB.Tracker):
+    m0 = st.session_state.get("bb_model")
+    if not m0 or m0.get("error"):
+        return
+    m = _price_live(trk, m0)
+    i = m["run"].info
+    st.caption(f"curves + SAFEST frozen at the run: spot {i['spot']:,.2f} · {i['run_at_et'][11:16]} ET — press Run "
+               f"model again if SPX has moved a lot · bids live {m['priced_at']:%H:%M:%S} ET")
     st.caption(f"SAFEST = strike just beyond the biggest one-session move since 1990 on days with VIX ≤ "
                f"{i.get('vix_bucket', '?')}, measured from {i.get('safest_measured_from', float('nan')):,.2f} — "
                "has not happened in that history, not cannot happen")
@@ -259,8 +280,6 @@ def _model_block(trk: BB.Tracker):
                 ["side", "strike", "pct_from_spot", "bid", "ask", "chance", "el_c", "cautious_c", "net_c", "ratio",
                  "cautious_ratio"]]
             st.dataframe(show.round(3), hide_index=True, width="stretch")
-    st.caption(MODEL_NOTE)
-    st.divider()
 
 
 def render(trk: BB.Tracker):

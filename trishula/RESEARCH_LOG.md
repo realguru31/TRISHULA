@@ -198,3 +198,14 @@ single-leg +0.27…+0.32 (worse today; yesterday single-leg looked better). Our 
 every 0DTE/1–3-expiry variant; his = red 7420–7640, green above 7650 = dealer short risk reversal from the WHOLE book.
 Giving 1DTE/2DTE the naive risk-reversal sign turns ours red below ~7560–7580 / green above → his shape, flip too low.
 → v0.26.0 long-dated book layer (OI × risk-reversal prior × weight). To score on his later screenshots.
+
+## 16. 16 Nov — lean locked test, 6 single-leg days (5, 9, 10, 11, 12, 16 Nov; 6 Nov file invalid) — scoring only, no changes
+Pre-registered rules unchanged (≥ 15 days needed before any verdict). Single-leg total / per day / days up:
+   A +247 / +41 / 4 of 6 (2nd half −23 per day) · B −40 · D +91.  All prints: A +181 · B +328 · D +242.
+   Since 10 Nov (days after the L50 review): A single-leg −36 vs all prints +150 — single-leg is NOT beating all prints;
+   A's total is still 5 Nov (+204). 16 Nov (SPX −97): single-leg A/B/D −41 / −36 / −33, all prints +74 / +24 / +52.
+H1 (opening single-leg 0DTE lean 09:30–09:45 → 09:45→close), forward days only: 10 Nov ✓ +7 · 11 Nov ✗ −35 · 12 Nov ✗ −5
+   · 16 Nov ✗ −94 → 1 of 4, −127 pts (short-every-day +97, all-prints sign −121). Leaning towards fail; keep counting.
+Data note: 16 Nov chain snapshots / spot rows start 12:20 ET (recorder memory lost ~12:20; status: rss peak 2.3 GB,
+   54 memory thins). Prints (TAS replay), SPX 1m and lean minutes cover the full day. Terrain at 10:00 / 12:00 for 16 Nov
+   can only be approximated (prints + OI); 14:00 and 15:30 are complete.
