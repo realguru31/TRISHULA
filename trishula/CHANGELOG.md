@@ -3,6 +3,10 @@
 Semantic versioning: MAJOR.MINOR.PATCH. The running version is shown in the app's
 status bar, every tab footer, and the Recorder diagnostics panel.
 
+## SPX BB app v0.39.0 — 2026-11-17 · charts show today's session only
+- Both live charts: 09:30 ET → now (overnight / premarket: since the 21:00 roll; an expired expiry: its 09:30–16:00).
+  The y-axis fits that window, so a 6850 → 6450 put-edge move fills the chart instead of a sliver. Display only.
+
 ## SPX BB app v0.38.0 — 2026-11-17 · every day starts clean (alerts were dead today)
 - Bug: the jump-alert level ratcheted outward silently while alerts were off, so the 17 Nov expiry carried stray
   1DTE / overnight 0.05 bids (5800P, 7950C) into today's 0DTE → the 6960 → 6850 put edge move sent nothing.

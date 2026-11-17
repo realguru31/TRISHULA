@@ -433,6 +433,21 @@ def _live(trk: BB.Tracker):
             d["spot"] = m_.where(m_.notna(), d["spot"])
     except Exception:                                # noqa: BLE001 — keep the stored spot
         pass
+    # v0.39.0: show today's session only — 09:30 → now (overnight / premarket: since the 21:00 roll); an expired
+    # expiry shows its own 09:30–16:00. Edges at the window start are carried in (step lines stay continuous).
+    nw = now_et().replace(tzinfo=None)
+    if expired:
+        ed = dt.date.fromisoformat(exp)
+        w0 = pd.Timestamp(dt.datetime.combine(ed, dt.time(9, 30)))
+    elif dt.time(9, 30) <= nw.time() < BB.BB_ROLL:
+        w0 = pd.Timestamp(dt.datetime.combine(nw.date(), dt.time(9, 30)))
+    else:
+        roll_day = nw.date() if nw.time() >= BB.BB_ROLL else nw.date() - dt.timedelta(days=1)
+        w0 = pd.Timestamp(dt.datetime.combine(roll_day, BB.BB_ROLL))
+    dw = d[d["t"] >= w0]
+    if len(dw) >= 2:
+        d = dw
+    al = [a for a in trk.alerts if a[1] == exp and pd.Timestamp(a[0]) >= d["t"].iloc[0]]
     t = d["t"]
     # ── left: 0.05-bid width ────────────────────────────────────────────────────────
     with left:
@@ -451,7 +466,6 @@ def _live(trk: BB.Tracker):
         f.add_scatter(x=t, y=d["pe"], mode="lines", line=dict(color=MAG, width=2, shape="hv"),
                       fill="tonexty", fillcolor="rgba(224,64,251,0.18)", name="put edge")
         f.add_scatter(x=t, y=d["spot"], mode="lines", line=dict(color="#e6edf3", width=1.3), name="SPX")
-        al = [a for a in trk.alerts if a[1] == exp]
         if al:
             f.add_scatter(x=pd.to_datetime([a[0] for a in al]), y=[a[3] for a in al], mode="markers",
                           marker=dict(size=9, color=["#2f8bff" if a[2] == "call" else "#e040fb" for a in al],
