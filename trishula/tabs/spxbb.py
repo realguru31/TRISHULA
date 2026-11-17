@@ -229,6 +229,9 @@ def _model_live(trk: BB.Tracker):
             keep = [r["strike"] for r in m.get("safe", []) if r["side"] == side]
             keep += [r["strike"] for r in m["key"] if r["side"] == side and r["row"].endswith("edge")]
             keep.append(float(d["strike"].min() if side == "put" else d["strike"].max()))   # furthest live bid
+            sold_k = trk.sold_for(side, m["exp"])                   # v0.41.0: your sold strike, always in view
+            if sold_k and ((side == "put" and sold_k < float(m["spot"])) or (side == "call" and sold_k > float(m["spot"]))):
+                keep.append(sold_k)
             # v0.31.1: spot → the furthest of (last live bid, edge, SAFEST, 2nd SAFEST) + 1 % of that strike
             sp_ = float(m["spot"])
             if side == "put":
@@ -256,6 +259,12 @@ def _model_live(trk: BB.Tracker):
                               hovertemplate="%{x:,.0f} · bid %{y:.0f}¢<br>reached %{customdata[0]:.3f}% · "
                                             "~%{customdata[1]:.2f}×/yr<br>exp loss %{customdata[2]:.2f}¢ · "
                                             "ratio %{customdata[3]:.2f}<extra></extra>")
+            if sold_k:
+                f.add_vline(x=sold_k, line=dict(color="#ffffff", width=3.5))
+                f.add_annotation(x=sold_k, y=0.5, yref="paper", showarrow=False, textangle=-90,
+                                 text=f"<b>SOLD {sold_k:,.0f}{'P' if side == 'put' else 'C'}</b>",
+                                 xshift=-12 if side == "put" else 12, font=dict(color="#ffffff", size=12),
+                                 bgcolor="rgba(14,17,23,0.85)")
             for n_, sf in enumerate([r for r in m.get("safe", []) if r["side"] == side]):
                 k = sf["strike"]
                 lc = "#2ecc71" if n_ == 0 else "#c77dff"
@@ -380,13 +389,24 @@ def _live(trk: BB.Tracker):
                     f"<span style='font-size:0.45em;color:#8b949e'> {'' if src == 'spx' else src}</span></div>",
                     unsafe_allow_html=True)
         s1, s2 = st.columns(2)
-        sc = s1.number_input("sold C", 0.0, 20000.0, float(trk.cfg.get("sold_call") or 0.0), 5.0, format="%.0f",
-                             key="bb_sc", help="0 = none")
-        sput = s2.number_input("sold P", 0.0, 20000.0, float(trk.cfg.get("sold_put") or 0.0), 5.0, format="%.0f",
-                               key="bb_sp", help="0 = none")
+        # v0.41.0: the boxes follow the saved value when the tracker clears an expired strike
+        for wk, ck in (("bb_sc", "sold_call"), ("bb_sp", "sold_put")):
+            cv = float(trk.cfg.get(ck) or 0.0)
+            if st.session_state.get(f"_{wk}_cfg") != cv:
+                st.session_state[wk] = cv
+                st.session_state[f"_{wk}_cfg"] = cv
+        hc = "0 = none · tied to the expiry you are viewing when you enter it — clears when that expiry ends"
+        sc = s1.number_input("sold C", 0.0, 20000.0, step=5.0, format="%.0f", key="bb_sc", help=hc)
+        sput = s2.number_input("sold P", 0.0, 20000.0, step=5.0, format="%.0f", key="bb_sp", help=hc)
         aa = st.number_input("Telegram when a sold strike's ASK reaches (09:30–16:00 ET)", 0.05, 50.0,
                              float(trk.cfg.get("ask_alert") or 0.50), 0.05, format="%.2f", key="bb_aa")
-        trk.set(sold_call=float(sc), sold_put=float(sput), ask_alert=round(float(aa), 2))
+        upd = dict(ask_alert=round(float(aa), 2))
+        for side, v, wk in (("call", float(sc), "bb_sc"), ("put", float(sput), "bb_sp")):
+            if v != float(trk.cfg.get(f"sold_{side}") or 0.0):
+                upd[f"sold_{side}"] = v
+                upd[f"sold_{side}_exp"] = exp if v > 0 else ""
+                st.session_state[f"_{wk}_cfg"] = v
+        trk.set(**upd)
         rows = ""
         for side, k, edge, cp, col in (("C", sc, ce, 1, BLUE), ("P", sput, pe, -1, MAG)):
             if not k:
@@ -481,8 +501,8 @@ def _live(trk: BB.Tracker):
                           marker=dict(size=9, color=["#2f8bff" if a[2] == "call" else "#e040fb" for a in al],
                                       line=dict(color="#fff", width=1)), name="alert")
         if sc:
-            f.add_hline(y=sc, line=dict(color=BLUE, dash="dot", width=1), annotation_text=f"sold {sc:,.0f}C")
+            f.add_hline(y=sc, line=dict(color="#ffffff", dash="dot", width=1.2), annotation_text=f"sold {sc:,.0f}C")
         if sput:
-            f.add_hline(y=sput, line=dict(color=MAG, dash="dot", width=1), annotation_text=f"sold {sput:,.0f}P")
+            f.add_hline(y=sput, line=dict(color="#ffffff", dash="dot", width=1.2), annotation_text=f"sold {sput:,.0f}P")
         st.plotly_chart(f, width="stretch", key="bb_e")
     st.session_state["_bb_figs"] = (sig, fw, f)

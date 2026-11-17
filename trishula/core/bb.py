@@ -32,7 +32,8 @@ HIST_PATH = "state/bb_history.json"       # v0.34.0: edge-change points + alerts
 SAVE_EVERY_S = 60
 DEFAULTS = {"mode": "0DTE", "min_bid": 0.05, "sold_call": 0.0, "sold_put": 0.0,
             "alert0": True, "thr0": 10, "alert1": True, "thr1": 10,       # v0.31.0: per-expiry alerts
-            "ask_alert": 0.50}                                            # v0.32.0: sold-strike ask alert level
+            "ask_alert": 0.50,                                            # v0.32.0: sold-strike ask alert level
+            "sold_call_exp": "", "sold_put_exp": ""}                      # v0.41.0: expiry each sold strike is for
 ONE_DTE_FROM, ONE_DTE_TO = dt.time(15, 0), BB_ROLL                       # 1DTE alerts only 15:00–21:00 ET
 
 
@@ -165,6 +166,7 @@ class Tracker:
         if self._roll_base is not None and base != self._roll_base:
             self.set(mode="0DTE")                  # v0.38.0: a new BB day always starts on 0DTE
         self._roll_base = base
+        self._sold_expiry(now)
         spot, src = self.rec.spot_now()
         if not spot == spot:
             return
@@ -187,8 +189,7 @@ class Tracker:
             if len(rows) > 12000:
                 del rows[:len(rows) - 12000]
             self._alerts(lab, exp, spot, src, e, now)       # v0.31.0: both expiries, whatever the view toggle
-            if lab == self.cfg["mode"]:
-                self._ask_alerts(lab, exp, spot, src, e, now)
+            self._ask_alerts(lab, exp, spot, src, e, now)       # v0.41.0: only for the sold strikes' own expiry
         live_exps = {d for _, d, _ in self.expiries(now)}
         for k in [k for k in self.marks if k[0] not in live_exps]:
             self.marks.pop(k, None)
@@ -203,6 +204,33 @@ class Tracker:
                 ST.save_file(HIST_PATH, {"series": self.series, "alerts": self.alerts}, "SPX BB history")
             except Exception:                      # noqa: BLE001
                 self._dirty = True
+
+    def _sold_expiry(self, now):
+        """v0.41.0: a sold strike belongs to the expiry it was entered for — cleared once that expiry has ended
+        (16:00 / its real stop time). One saved without an expiry (pre-0.41) is given today's 0DTE."""
+        exps = self.expiries(now)
+        for side in ("call", "put"):
+            k = float(self.cfg.get(f"sold_{side}") or 0)
+            ex = str(self.cfg.get(f"sold_{side}_exp") or "")
+            if k <= 0:
+                if ex:
+                    self.set(**{f"sold_{side}_exp": ""})
+                continue
+            if not ex:
+                if exps:
+                    self.set(**{f"sold_{side}_exp": exps[0][1]})
+                continue
+            try:
+                done = now >= EX.end(ex)
+            except Exception:                      # noqa: BLE001
+                done = now.date() > dt.date.fromisoformat(ex[:10])
+            if done:
+                self.set(**{f"sold_{side}": 0.0, f"sold_{side}_exp": ""})
+
+    def sold_for(self, side: str, exp: str) -> float:
+        """The sold strike if it was entered for THIS expiry, else 0."""
+        k = float(self.cfg.get(f"sold_{side}") or 0)
+        return k if k > 0 and str(self.cfg.get(f"sold_{side}_exp") or "") == exp else 0.0
 
     def alert_window(self, lab, now) -> bool:
         """v0.38.0 — 0DTE: 09:30–16:00 ET weekdays · 1DTE: 15:00–21:00 ET. Outside it the alert level copies the edge,
@@ -238,8 +266,8 @@ class Tracker:
                           f"(min bid {self.cfg['min_bid']:.2f})\n"
                           f"spot {spot:,.2f}{'' if src == 'spx' else ' (' + src + ')'} · {side} dist "
                           f"{abs(k - spot):,.0f} · {now:%H:%M:%S} ET")
-            sold = float(self.cfg.get(f"sold_{side}") or 0)
-            if sold > 0 and live and lab == self.cfg["mode"]:    # sold strikes = the expiry you are viewing
+            sold = self.sold_for(side, exp)
+            if sold > 0 and live:                               # v0.41.0: the expiry the strike was sold for
                 through = (k >= sold) if side == "call" else (k <= sold)
                 key = (now.date(), exp, side, sold)              # once per day
                 if through and not self.warned.get(key):
@@ -258,7 +286,7 @@ class Tracker:
             return
         dlab = f"{lab} {dt.date.fromisoformat(exp):%a %d %b}"
         for side, cp in (("call", 1), ("put", -1)):
-            k = float(self.cfg.get(f"sold_{side}") or 0)
+            k = self.sold_for(side, exp)
             if k <= 0:
                 continue
             b, a = self.quote(exp, k, cp)

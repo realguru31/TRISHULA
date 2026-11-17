@@ -3,6 +3,13 @@
 Semantic versioning: MAJOR.MINOR.PATCH. The running version is shown in the app's
 status bar, every tab footer, and the Recorder diagnostics panel.
 
+## SPX BB app v0.41.0 — 2026-11-17 · sold strikes: white lines + tied to their expiry
+- Model charts: bold white SOLD line at your sold put / call; the chart widens to keep it in view.
+- Live edge chart: sold lines white dotted (both sides).
+- Each sold strike remembers the expiry you were viewing when you entered it and clears once that expiry ends —
+  a 0DTE sale is gone next morning, a 1DTE sale after the close carries into the next day as the 0DTE.
+  Sold-strike / ask alerts watch only that expiry.
+
 ## SPX BB app v0.40.1 — 2026-11-17 · refresh dropdown says what it is
 - Shows "🔄 refresh 10 s" (5 / 30 / 60 s) and "⏸ PAUSED".
 
