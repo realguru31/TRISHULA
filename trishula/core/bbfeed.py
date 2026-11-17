@@ -57,6 +57,14 @@ class BBFeed:
         self.spx = (float("nan"), 0)
         self.spx_prev_close = float("nan")
         self.candles: dict[int, tuple] = {}
+        # v0.44.0: 1-minute TRADE candles for your sold strikes (MAE) — tracker asks via want_candle()
+        self.ocandles: dict[str, dict[int, tuple]] = {}
+        self._want: dict[str, int] = {}            # streamer symbol → from (epoch ms)
+        self._subbed: set = set()
+
+    def want_candle(self, sym: str, from_ms: int):
+        if sym and (sym not in self._want or from_ms < self._want[sym]):
+            self._want[sym] = int(from_ms)
 
     def _err(self, e: Exception, where: str):
         self.errors.append({"t": now_et().isoformat(timespec="seconds"), "where": where,
@@ -125,6 +133,7 @@ class BBFeed:
             self.bb_meta = meta
             self.legs = meta
 
+        self._subbed = set()
         async with DXLinkStreamer(sess) as s:
             self.state = "subscribing"
             await s.subscribe(Trade, ["SPX"])
@@ -139,7 +148,8 @@ class BBFeed:
             self.state = (f"live · {' / '.join(f'{d:%a %d %b}' for d in exps)} · {len(syms):,} strikes")
             tasks = [asyncio.create_task(c) for c in (
                 self._l_quote(s, Quote), self._l_trade(s, Trade), self._l_summary(s, Summary),
-                self._l_candle(s, Candle), self._roll_watch(base), self._token_watch(), self._stop_watch())]
+                self._l_candle(s, Candle), self._roll_watch(base), self._token_watch(), self._stop_watch(),
+                self._want_watch(s))]
             done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
             for p in pending:
                 p.cancel()
@@ -161,6 +171,20 @@ class BBFeed:
         while not self._stop:
             await asyncio.sleep(1)
 
+    async def _want_watch(self, s):
+        """Subscribe 1-minute candles for any sold strike the tracker asked for (history from its from_ms)."""
+        while True:
+            for sym, fm in list(self._want.items()):
+                if sym in self._subbed:
+                    continue
+                self._subbed.add(sym)
+                try:
+                    st_ = dt.datetime.fromtimestamp(fm / 1000, tz=now_et().tzinfo)
+                    await s.subscribe_candle([sym], "1m", start_time=st_)
+                except Exception as e:                      # noqa: BLE001
+                    self._err(e, f"candle {sym}")
+            await asyncio.sleep(2)
+
     # ── listeners ────────────────────────────────────────────────────
     async def _l_quote(self, s, Quote):
         async for e in s.listen(Quote):
@@ -181,7 +205,14 @@ class BBFeed:
 
     async def _l_candle(self, s, Candle):
         async for c in s.listen(Candle):
-            if not c.time or c.close is None or not str(c.event_symbol).startswith("SPX{"):
+            if not c.time or c.close is None:
+                continue
+            base = str(c.event_symbol).partition("{")[0]
+            if base != "SPX":
+                if base in self._want:
+                    hi = _f(c.high)
+                    if _ok(hi):
+                        self.ocandles.setdefault(base, {})[int(c.time)] = (hi, _f(c.close))
                 continue
             cl = _f(c.close)
             if _ok(cl):

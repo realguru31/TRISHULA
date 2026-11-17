@@ -33,6 +33,20 @@ def _every():
     return REFRESH.get(st.session_state.get("bb_refresh", "10 s"), 10)
 
 
+def _mae_txt(trk, exp, side, k) -> str:
+    """v0.44.0: worst of highest trade / highest live ask for your sold strike today."""
+    m = trk.mae_for(exp, "call" if side == "C" else "put", float(k)) if hasattr(trk, "mae_for") else {}
+    c = []
+    if m.get("trade"):
+        c.append((float(m["trade"]), m.get("trade_t", ""), "T"))
+    if m.get("ask"):
+        c.append((float(m["ask"]), m.get("ask_t", ""), "A"))
+    if not c:
+        return "—"
+    v, t, tag = max(c)
+    return f"{v:.2f} @{t} {tag}"
+
+
 def _cell(txt, bg="transparent", fg="#e6edf3", bold=False, size="1.0em"):
     return (f"<td style='padding:3px 10px;background:{bg};color:{fg};text-align:right;font-size:{size};"
             f"{'font-weight:700;' if bold else ''}'>{txt}</td>")
@@ -411,7 +425,7 @@ def _live(trk: BB.Tracker):
         for side, k, edge, cp, col in (("C", sc, ce, 1, BLUE), ("P", sput, pe, -1, MAG)):
             if not k:
                 rows += (f"<tr><td style='color:{col};font-weight:700'>{side}</td>"
-                         + _cell("—", fg="#8b949e") * 3 + "</tr>")
+                         + _cell("—", fg="#8b949e") * 4 + "</tr>")
                 continue
             buf = (k - edge) if cp > 0 else (edge - k)
             ok = buf > 0
@@ -421,14 +435,16 @@ def _live(trk: BB.Tracker):
             rows += (f"<tr><td style='color:{col};font-weight:700'>{side} {k:.0f}</td>"
                      + _cell(f"{buf:+.0f}", bg, "#7ee2a8" if ok else "#ff8a9a", True)
                      + _cell("—" if not ask == ask else f"{ask:.2f}", bg)
-                     + _cell(f"{dpc:.2%}", "#0d2a5a" if cp > 0 else "#3d0f45") + "</tr>")
+                     + _cell(f"{dpc:.2%}", "#0d2a5a" if cp > 0 else "#3d0f45") + _cell(_mae_txt(trk, exp, side, k)) + "</tr>")
         st.markdown("<table style='border-collapse:collapse;font-family:monospace;margin-top:4px'>"
                     "<tr><td></td><td style='color:#8b949e;padding:0 10px;text-align:right'>buffer</td>"
                     "<td style='color:#8b949e;padding:0 10px;text-align:right'>ask</td>"
-                    "<td style='color:#8b949e;padding:0 10px;text-align:right'>dist from spot</td></tr>"
+                    "<td style='color:#8b949e;padding:0 10px;text-align:right'>dist from spot</td>"
+                    "<td style='color:#8b949e;padding:0 10px;text-align:right'>MAE</td></tr>"
                     + rows + "</table>", unsafe_allow_html=True)
         st.caption("buffer = how far your strike sits beyond the last 0.05 bid · green = outside the liquidity, "
-                   "red = the edge has reached / passed it")
+                   "red = the edge has reached / passed it · MAE = worst price against you today: highest trade "
+                   "(T, from 09:30) or highest ask (A, live in RTH)")
 
     if df.empty:
         left.info(f"chart fills as the tracker samples (every {BB.CHECK_S} s)")

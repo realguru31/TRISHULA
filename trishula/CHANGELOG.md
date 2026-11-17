@@ -3,6 +3,11 @@
 Semantic versioning: MAJOR.MINOR.PATCH. The running version is shown in the app's
 status bar, every tab footer, and the Recorder diagnostics panel.
 
+## SPX BB app v0.44.0 — 2026-11-17 · MAE on your sold strikes
+- Sold-strike table: MAE = worst price against you today — highest TRADE from tastytrade 1-minute candles (from 09:30;
+  1DTE sold after the close: from 15:00) or highest ASK seen live in RTH, e.g. "0.25 @10:54 T".
+- Feed subscribes 1-minute candles only for the sold strikes; saved with the edge history, cleared with the expiry.
+
 ## SPX BB app v0.43.0 — 2026-11-17 · ATM straddle overlay on the width chart
 - Tracker records the ATM straddle (call mid + put mid at the strike nearest spot, two-sided quotes) once a minute per
   expiry, saved with the edge history (survives restarts).

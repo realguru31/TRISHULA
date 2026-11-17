@@ -44,6 +44,7 @@ class Tracker:
         self.series: dict[str, list] = {}          # exp → rows (t, spot, src, ce, ce_b, ce_a, pe, pe_b, pe_a)
         self.alerts: list = []                     # (t, exp, side, strike) — chart markers
         self.strad: dict[str, list] = {}           # v0.43.0: exp → (t minute, ATM strike, straddle mid) once a minute
+        self.mae: dict[str, dict] = {}             # v0.44.0: "exp|side|strike" → worst trade / ask since 09:30
         self.marks: dict = {}                      # (exp, side) → last alerted strike
         self.warned: dict = {}                     # (exp, side, sold) → warned once
         self.seen: set = set()
@@ -60,6 +61,7 @@ class Tracker:
                         self.series[k] = [tuple(r) for r in v]
                         self.seen.add(k)
                 self.alerts = [tuple(a) for a in (h.get("alerts") or []) if a[1] in self.series]
+                self.mae = {k: v for k, v in (h.get("mae") or {}).items() if k.split("|")[0] in self.series}
                 self.strad = {k: [tuple(r) for r in v] for k, v in (h.get("strad") or {}).items() if k in self.series}
                 # v0.38.0: alert levels are NOT reloaded — every day / every restart starts from the live edge
         except Exception:                          # noqa: BLE001
@@ -191,6 +193,7 @@ class Tracker:
             if len(rows) > 12000:
                 del rows[:len(rows) - 12000]
             self._straddle(exp, spot, now)
+            self._mae(exp, now)
             self._alerts(lab, exp, spot, src, e, now)       # v0.31.0: both expiries, whatever the view toggle
             self._ask_alerts(lab, exp, spot, src, e, now)       # v0.41.0: only for the sold strikes' own expiry
         live_exps = {d for _, d, _ in self.expiries(now)}
@@ -198,6 +201,8 @@ class Tracker:
             self.marks.pop(k, None)
         for k in [k for k in self.series if k not in self.seen]:
             self.series.pop(k, None)
+        for k in [k for k in self.mae if k.split("|")[0] not in live_exps]:
+            self.mae.pop(k, None)
         for k in [k for k in self.strad if k not in self.series]:
             self.strad.pop(k, None)
         while len(self.series) > 3:
@@ -206,7 +211,7 @@ class Tracker:
         if self._dirty and time.time() - self._saved_at >= SAVE_EVERY_S:
             self._dirty, self._saved_at = False, time.time()
             try:
-                ST.save_file(HIST_PATH, {"series": self.series, "alerts": self.alerts, "strad": self.strad}, "SPX BB history")
+                ST.save_file(HIST_PATH, {"series": self.series, "alerts": self.alerts, "strad": self.strad, "mae": self.mae}, "SPX BB history")
             except Exception:                      # noqa: BLE001
                 self._dirty = True
 
@@ -242,6 +247,50 @@ class Tracker:
             if len(rows) > 3000:
                 del rows[:len(rows) - 3000]
             self._dirty = True
+
+    def sym_for(self, exp: str, k: float, cp: int):
+        meta = getattr(self.rec, "bb_meta", {}) or {}
+        for sym, (ex, kk, c) in list(meta.items()):
+            if ex == exp and c == cp and abs(kk - k) < 1e-6:
+                return sym
+        return None
+
+    def _mae(self, exp, now):
+        """v0.44.0: worst price against your sold strikes for this expiry — highest TRADE (1-minute candles from
+        tastytrade, back to 09:30 or the 15:00 1DTE window if sold after the close) and highest ASK seen live in RTH."""
+        for side, cp in (("call", 1), ("put", -1)):
+            k = self.sold_for(side, exp)
+            if k <= 0:
+                continue
+            sym = self.sym_for(exp, k, cp)
+            if not sym:
+                continue
+            day = now.date()
+            exp_d = dt.date.fromisoformat(exp[:10])
+            w0 = dt.datetime.combine(day, dt.time(9, 30)) if exp_d == day else \
+                dt.datetime.combine(day, dt.time(15, 0))
+            w0_ms = int(w0.replace(tzinfo=now_et().tzinfo).timestamp() * 1000)
+            want = getattr(self.rec, "want_candle", None)
+            if want:
+                want(sym, w0_ms)
+            key = f"{exp}|{side}|{k:.0f}"
+            m = self.mae.setdefault(key, {})
+            oc = (getattr(self.rec, "ocandles", {}) or {}).get(sym) or {}
+            hits = [(v[0], t) for t, v in list(oc.items()) if t >= w0_ms]
+            if hits:
+                hi, t_ = max(hits)
+                if hi > float(m.get("trade") or 0):
+                    m["trade"] = hi
+                    m["trade_t"] = dt.datetime.fromtimestamp(t_ / 1000, tz=now_et().tzinfo).strftime("%H:%M")
+                    self._dirty = True
+            if now.weekday() < 5 and dt.time(9, 30) <= now.time() < dt.time(16, 0):
+                b, a = self.quote(exp, k, cp)
+                if a == a and a > float(m.get("ask") or 0):
+                    m["ask"], m["ask_t"] = a, now.strftime("%H:%M")
+                    self._dirty = True
+
+    def mae_for(self, exp: str, side: str, k: float):
+        return self.mae.get(f"{exp}|{side}|{k:.0f}") or {}
 
     def strad_frame(self, exp: str):
         import pandas as pd
