@@ -3,6 +3,12 @@
 Semantic versioning: MAJOR.MINOR.PATCH. The running version is shown in the app's
 status bar, every tab footer, and the Recorder diagnostics panel.
 
+## SPX BB app v0.43.0 — 2026-11-17 · ATM straddle overlay on the width chart
+- Tracker records the ATM straddle (call mid + put mid at the strike nearest spot, two-sided quotes) once a minute per
+  expiry, saved with the edge history (survives restarts).
+- Width chart: width in pts on the right axis (as before) + ATM straddle in $ on the left axis, scaled so both lines
+  start at the same height (09:30, or the straddle's first reading) — compare ATM vs far-OTM decay paths.
+
 ## SPX BB app v0.42.0 — 2026-11-17 · no commas in strikes, bigger labels, 0.5 % buffer
 - Strikes without thousands commas everywhere in SPX BB (tables, chart labels, hovers, Telegram). SPX prices keep theirs.
 - Model chart labels bigger: SOLD 15, SAFEST / 2nd SAFEST / SPX 13.

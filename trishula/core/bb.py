@@ -43,6 +43,7 @@ class Tracker:
         self.cfg = dict(DEFAULTS)
         self.series: dict[str, list] = {}          # exp → rows (t, spot, src, ce, ce_b, ce_a, pe, pe_b, pe_a)
         self.alerts: list = []                     # (t, exp, side, strike) — chart markers
+        self.strad: dict[str, list] = {}           # v0.43.0: exp → (t minute, ATM strike, straddle mid) once a minute
         self.marks: dict = {}                      # (exp, side) → last alerted strike
         self.warned: dict = {}                     # (exp, side, sold) → warned once
         self.seen: set = set()
@@ -59,6 +60,7 @@ class Tracker:
                         self.series[k] = [tuple(r) for r in v]
                         self.seen.add(k)
                 self.alerts = [tuple(a) for a in (h.get("alerts") or []) if a[1] in self.series]
+                self.strad = {k: [tuple(r) for r in v] for k, v in (h.get("strad") or {}).items() if k in self.series}
                 # v0.38.0: alert levels are NOT reloaded — every day / every restart starts from the live edge
         except Exception:                          # noqa: BLE001
             pass
@@ -188,6 +190,7 @@ class Tracker:
                 self._dirty = True
             if len(rows) > 12000:
                 del rows[:len(rows) - 12000]
+            self._straddle(exp, spot, now)
             self._alerts(lab, exp, spot, src, e, now)       # v0.31.0: both expiries, whatever the view toggle
             self._ask_alerts(lab, exp, spot, src, e, now)       # v0.41.0: only for the sold strikes' own expiry
         live_exps = {d for _, d, _ in self.expiries(now)}
@@ -195,15 +198,58 @@ class Tracker:
             self.marks.pop(k, None)
         for k in [k for k in self.series if k not in self.seen]:
             self.series.pop(k, None)
+        for k in [k for k in self.strad if k not in self.series]:
+            self.strad.pop(k, None)
         while len(self.series) > 3:
             self.series.pop(sorted(self.series)[0], None)
         self.status["last"] = now.strftime("%H:%M:%S")
         if self._dirty and time.time() - self._saved_at >= SAVE_EVERY_S:
             self._dirty, self._saved_at = False, time.time()
             try:
-                ST.save_file(HIST_PATH, {"series": self.series, "alerts": self.alerts}, "SPX BB history")
+                ST.save_file(HIST_PATH, {"series": self.series, "alerts": self.alerts, "strad": self.strad}, "SPX BB history")
             except Exception:                      # noqa: BLE001
                 self._dirty = True
+
+    def straddle(self, exp: str, spot: float):
+        """ATM straddle = call mid + put mid at the strike nearest spot that has two-sided quotes on both legs."""
+        meta = dict(getattr(self.rec, "bb_meta", {}) or {}) or dict(self.rec.legs)
+        q = self.rec.quotes
+        legs: dict = {}
+        for sym, (ex, k, cp) in meta.items():
+            if ex != exp or abs(k - spot) > 60:
+                continue
+            v = q.get(sym)
+            if v and v[0] == v[0] and v[1] == v[1] and v[0] > 0 and v[1] >= v[0]:
+                legs.setdefault(k, {})[cp] = (v[0] + v[1]) / 2
+        ks = [k for k, d in legs.items() if 1 in d and -1 in d]
+        if not ks:
+            return None
+        k = min(ks, key=lambda x: abs(x - spot))
+        return k, legs[k][1] + legs[k][-1]
+
+    def _straddle(self, exp, spot, now):
+        """v0.43.0: one ATM straddle point per minute per expiry (for the width chart overlay)."""
+        tm = now.replace(second=0, microsecond=0).isoformat(timespec="minutes")
+        rows = self.strad.setdefault(exp, [])
+        if rows and rows[-1][0] == tm:
+            return
+        try:
+            r = self.straddle(exp, spot)
+        except Exception:                          # noqa: BLE001
+            r = None
+        if r:
+            rows.append((tm, r[0], round(r[1], 2)))
+            if len(rows) > 3000:
+                del rows[:len(rows) - 3000]
+            self._dirty = True
+
+    def strad_frame(self, exp: str):
+        import pandas as pd
+        rows = self.strad.get(exp) or []
+        df = pd.DataFrame(rows, columns=["t", "k", "strad"])
+        if len(df):
+            df["t"] = pd.to_datetime(df["t"])
+        return df
 
     def _sold_expiry(self, now):
         """v0.41.0: a sold strike belongs to the expiry it was entered for — cleared once that expiry has ended

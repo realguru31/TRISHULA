@@ -434,7 +434,7 @@ def _live(trk: BB.Tracker):
         left.info(f"chart fills as the tracker samples (every {BB.CHECK_S} s)")
         return
     # v0.33.0: build the two charts only when their data changed — otherwise re-send the identical figures
-    sig = (exp, len(df), tuple(df.iloc[-1].astype(str)), len(trk.alerts), sc, sput,
+    sig = (exp, len(df), tuple(df.iloc[-1].astype(str)), len(trk.alerts), sc, sput, len(trk.strad.get(exp) or []),
            now_et().strftime("%H:%M"), round(float(spot), 1) if spot == spot else None)
     cache = st.session_state.get("_bb_figs")
     if cache and cache[0] == sig:
@@ -481,9 +481,32 @@ def _live(trk: BB.Tracker):
     t = d["t"]
     # ── left: 0.05-bid width ────────────────────────────────────────────────────────
     with left:
-        f = _fig("0.05-bid width (pts) — call edge − put edge")
-        f.add_scatter(x=t, y=d["ce"] - d["pe"], mode="lines", line=dict(color="#ab47bc", width=2, shape="hv"),
-                      name="width")
+        f = _fig("0.05-bid width (pts, right) vs ATM straddle ($, left) — same start")
+        wv = d["ce"] - d["pe"]
+        f.add_scatter(x=t, y=wv, mode="lines", line=dict(color="#ab47bc", width=2, shape="hv"), name="width",
+                      hovertemplate="width %{y:.0f} pts<extra></extra>")
+        # v0.43.0: ATM straddle overlay on its own $ axis, scaled so both lines start at the same height
+        try:
+            sd = trk.strad_frame(exp)
+            sd = sd[(sd["t"] >= t.iloc[0]) & (sd["t"] <= t.iloc[-1])] if len(sd) else sd
+        except Exception:                            # noqa: BLE001
+            sd = pd.DataFrame()
+        if len(sd) >= 1 and len(wv.dropna()):
+            w_at = pd.merge_asof(sd[["t"]], pd.DataFrame({"t": t, "w": wv}).dropna(), on="t", direction="backward")
+            w0 = float(w_at["w"].dropna().iloc[0]) if w_at["w"].notna().any() else float(wv.dropna().iloc[0])
+            s0 = float(sd["strad"].iloc[0])
+            if w0 > 0 and s0 > 0:
+                sc_ = s0 / w0                                  # $ per pt of width
+                allw = np.concatenate([wv.dropna().values, sd["strad"].values / sc_])
+                lo_, hi_ = float(allw.min()), float(allw.max())
+                pad = max(5.0, (hi_ - lo_) * 0.06)
+                lo_, hi_ = lo_ - pad, hi_ + pad
+                f.add_scatter(x=sd["t"], y=sd["strad"], mode="lines", yaxis="y2", name="ATM straddle",
+                              line=dict(color="#f5c542", width=2), customdata=sd["k"],
+                              hovertemplate="straddle $%{y:.2f} (%{customdata:.0f})<extra></extra>")
+                f.update_layout(margin=dict(l=52, r=8, t=36, b=8), yaxis=dict(range=[lo_, hi_]),
+                                yaxis2=dict(overlaying="y", side="left", range=[lo_ * sc_, hi_ * sc_], showgrid=False,
+                                            tickprefix="$", tickfont=dict(color="#f5c542")))
         st.plotly_chart(f, width="stretch", key="bb_w")
         fw = f
     # ── right: furthest 0.05-bid strikes, bands spot → edge ────────────────────────
