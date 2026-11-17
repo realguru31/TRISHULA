@@ -218,14 +218,20 @@ def _best(d, spot):
 def _side_box(side, m, best):
     col = BLUE if side == "call" else MAG
     rows = [dict(r, lab=r["row"]) for r in m.get("safe", []) if r["side"] == side]
-    rows += [dict(r, lab=f"Furthest {side}") for r in m["key"] if r["side"] == side and r["row"].endswith("edge")]
-    if best is not None:
-        rows.append(dict(best, lab="<span style='color:#f5c542'>★</span> Best ratio"))
+    fur = [dict(r, lab=f"Furthest {side}") for r in m["key"] if r["side"] == side and r["row"].endswith("edge")]
+    # v0.47.2: always the same rows (SAFEST, 2nd SAFEST, Furthest, Best) so the put / call charts line up
+    rows += fur or [dict(lab=f"Furthest {side}", empty="none · no live bid")]
+    star = "<span style='color:#f5c542'>★</span> Best ratio"
+    rows.append(dict(best, lab=star) if best is not None else dict(lab=star, empty="none · all bids inside the 50¢ zone"))
     h = ("<table style='border-collapse:collapse;font-family:monospace;font-size:0.98em;margin-bottom:4px'><tr>"
          + f"<td style='color:{col};font-weight:700;padding:2px 10px'>{side.upper()}S</td>"
          + "".join(f"<td style='color:#8b949e;padding:2px 10px;text-align:right'>{c}</td>"
                    for c in ("strike", "history move", "bid", "chance / yr", "ratio")) + "</tr>")
     for r in rows:
+        if r.get("empty"):
+            h += (f"<tr><td style='color:{col};font-weight:700;padding:2px 10px'>{r['lab']}</td>" + _cell("—")
+                  + _cell(r["empty"], fg="#8b949e") + _cell("—") + _cell("—") + _cell("—", RED_BG) + "</tr>")
+            continue
         nob = not r.get("has_bid", True) or not r.get("bid")
         ratio = float("nan") if nob else r.get("ratio")
         ok = ratio == ratio and ratio >= 1

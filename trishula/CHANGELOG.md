@@ -3,6 +3,9 @@
 Semantic versioning: MAJOR.MINOR.PATCH. The running version is shown in the app's
 status bar, every tab footer, and the Recorder diagnostics panel.
 
+## SPX BB app v0.47.2 — 2026-11-17 · put / call model tables always 4 rows (charts line up)
+- "★ Best ratio" (and "Furthest") rows always shown; when nothing qualifies: "none · all bids inside the 50¢ zone".
+
 ## SPX BB app v0.47.1 — 2026-11-17 · fix: SPX line / title / chart range back on live spot
 - v0.47.0 wrongly moved the white SPX line, the chart title and the chart's start to today's open. Back as before
   (live spot at the press). Only the solid curve is measured from today's open; dotted from yesterday's close.
