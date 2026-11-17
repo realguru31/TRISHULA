@@ -3,6 +3,9 @@
 Semantic versioning: MAJOR.MINOR.PATCH. The running version is shown in the app's
 status bar, every tab footer, and the Recorder diagnostics panel.
 
+## SPX BB app v0.40.1 — 2026-11-17 · refresh dropdown says what it is
+- Shows "🔄 refresh 10 s" (5 / 30 / 60 s) and "⏸ PAUSED".
+
 ## SPX BB app v0.40.0 — 2026-11-17 · screen refresh selector, zoom kept
 - VIEW box: screen refresh 5 s / 10 s (default) / 30 s / 60 s / ⏸ pause — redraws of the live charts + the model's
   live bids only; the tracker and Telegram alerts still check every 5 s.

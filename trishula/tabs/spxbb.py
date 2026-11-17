@@ -308,6 +308,7 @@ def render(trk: BB.Tracker):
         mb = v2.number_input("Min bid", 0.05, 1.00, float(trk.cfg["min_bid"]), 0.05, format="%.2f", key="bb_mb",
                              label_visibility="collapsed", help="min bid that counts as liquidity")
         v3.selectbox("Screen refresh", list(REFRESH), index=1, key="bb_refresh", label_visibility="collapsed",
+                     format_func=lambda k: "⏸ PAUSED" if REFRESH[k] is None else f"🔄 refresh {k}",
                      help="how often the screen redraws · ⏸ pause freezes it · the tracker + Telegram alerts are not "
                           "affected")
     with abox.container(border=True):
