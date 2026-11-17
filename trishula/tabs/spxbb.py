@@ -66,9 +66,55 @@ def _run_model(trk: BB.Tracker):
     if exp is None or not spot == spot:
         st.session_state["bb_model"] = {"error": "no expiry or spot yet"}
         return
-    run = EM.run_model(toggle=mode, spot=spot, now_et=now_et().replace(tzinfo=None), spot_source=src)
-    st.session_state["bb_model"] = dict(run=run, mode=mode, exp=exp, spot=spot, src=src,
-                                        win={"put": run.display_window("put"), "call": run.display_window("call")})
+    now = now_et().replace(tzinfo=None)
+    run_y, ycl, kind = None, None, "spot at the press"
+    if mode == "0DTE":
+        # v0.47.0: two 0DTE anchors, both from the user's model unchanged —
+        #   today open      = 0DTE fit (open → that day's low / high) measured from today's 09:30 open
+        #                     (premarket: current spot, moved to the real open once it exists)
+        #   yesterday close = the close → next day's low / high fit (1DTE mode) on history to yesterday, from that close
+        h = EM.load_history()
+        hy = h[h.index.date < now.date()]
+        ycl = float(hy["Close"].iloc[-1])
+        op = _today_open(trk)
+        spot, kind = (op, "today open") if op else (spot, "premarket spot")
+        run = EM.run_model(toggle="0DTE", spot=spot, history=h, now_et=now, spot_source=kind)
+        run_y = EM.run_model(toggle="1DTE", spot=ycl, history=hy, now_et=now, spot_source="yesterday close")
+    else:
+        run = EM.run_model(toggle=mode, spot=spot, now_et=now, spot_source=src)
+    st.session_state["bb_model"] = dict(run=run, run_y=run_y, ycl=ycl, kind=kind, mode=mode, exp=exp, spot=spot,
+                                        src=src, win={"put": run.display_window("put"), "call": run.display_window("call")})
+
+
+def _today_open(trk: BB.Tracker):
+    """SPX 09:30 open from the 1-minute candles (None before the open / if missing)."""
+    try:
+        c = trk.rec.candles_df()
+        if not len(c):
+            return None
+        t = pd.to_datetime(c["ts_ms"], unit="ms", utc=True).dt.tz_convert("America/New_York").dt.tz_localize(None)
+        d0 = dt.datetime.combine(now_et().date(), dt.time(9, 30))
+        x = c[(t >= d0) & (t < d0 + dt.timedelta(minutes=1))]
+        return float(x["open"].iloc[0]) if len(x) and x["open"].iloc[0] == x["open"].iloc[0] else None
+    except Exception:                                # noqa: BLE001
+        return None
+
+
+def _reanchor_open(trk: BB.Tracker, m0: dict) -> dict:
+    """Premarket run → once the 09:30 open exists, move the solid line to it (same %, no refit)."""
+    import copy
+    if m0.get("kind") != "premarket spot":
+        return m0
+    op = _today_open(trk)
+    if not op:
+        return m0
+    r = copy.copy(m0["run"])
+    r.spot = op
+    r.info = dict(r.info, spot=op, spot_source="today open")
+    m1 = dict(m0, run=r, spot=op, kind="today open",
+              win={"put": r.display_window("put"), "call": r.display_window("call")})
+    st.session_state["bb_model"] = m1
+    return m1
 
 
 def _price_live(trk: BB.Tracker, m: dict) -> dict:
@@ -223,9 +269,12 @@ def _model_live(trk: BB.Tracker):
     m0 = st.session_state.get("bb_model")
     if not m0 or m0.get("error"):
         return
+    m0 = _reanchor_open(trk, m0)
     m = _price_live(trk, m0)
     i = m["run"].info
-    st.caption(f"curves + SAFEST frozen at the run: spot {i['spot']:,.2f} · {i['run_at_et'][11:16]} ET · bids live "
+    anc = (f"solid = {m.get('kind')} {i['spot']:,.2f}" + (f" · dotted = yesterday close {m['ycl']:,.2f}"
+                                                          if m.get("run_y") is not None else ""))
+    st.caption(f"{anc} · run {i['run_at_et'][11:16]} ET · bids live "
                f"{m['priced_at']:%H:%M:%S} ET", help="Press Run model again if SPX has moved a lot. SAFEST = strike just "
                f"beyond the biggest one-session move since 1990 on days with VIX ≤ {i.get('vix_bucket', '?')}, measured "
                f"from {i.get('safest_measured_from', float('nan')):,.2f} — has not happened in that history, not cannot "
@@ -263,8 +312,13 @@ def _model_live(trk: BB.Tracker):
                             legend=dict(orientation="h", y=-0.14, x=0, font=dict(size=11)))
             gx = np.linspace(lo, hi, 160)
             gq = [m["run"].price(side, k, 0.0) for k in gx]
-            f.add_scatter(x=gx, y=[q["el_c"] for q in gq], mode="lines", line=dict(color="#f5c542", width=2, dash="dash"),
-                          name="expected loss", hoverinfo="skip")
+            solid_nm = "expected loss" if m.get("run_y") is None else "today open"
+            f.add_scatter(x=gx, y=[q["el_c"] for q in gq], mode="lines", line=dict(color="#f5c542", width=2.2),
+                          name=solid_nm, hoverinfo="skip")
+            if m.get("run_y") is not None:
+                gy = [m["run_y"].price(side, k, 0.0) for k in gx]
+                f.add_scatter(x=gx, y=[q["el_c"] for q in gy], mode="lines",
+                              line=dict(color="#f5c542", width=2, dash="dot"), name="yesterday close", hoverinfo="skip")
             f.add_scatter(x=gx, y=[q["cautious_c"] for q in gq], mode="lines",
                           line=dict(color="#ff8a65", width=1.3, dash="dot"), name="cautious (95 %)", hoverinfo="skip")
             if len(d):
@@ -299,7 +353,7 @@ def _model_live(trk: BB.Tracker):
                               marker=dict(symbol="star", size=16, color="#f5c542", line=dict(color="#0e1117", width=1)),
                               hovertemplate=f"BEST ratio {best['strike']:.0f} · {best['ratio']:.2f}×<extra></extra>")
             f.add_vline(x=sp_, line=dict(color="#e6edf3", width=2))
-            f.add_annotation(x=sp_, y=1, yref="paper", yanchor="top", showarrow=False, text=f"SPX {sp_:,.2f}",
+            f.add_annotation(x=sp_, y=1, yref="paper", yanchor="top", showarrow=False, text=f"{ {'today open': 'OPEN', 'premarket spot': 'PREMKT'}.get(m.get('kind'), 'SPX')} {sp_:,.2f}",
                              xanchor="right" if side == "put" else "left", xshift=-4 if side == "put" else 4,
                              font=dict(color="#e6edf3", size=13), bgcolor="rgba(14,17,23,0.8)")
             f.update_xaxes(range=[lo, hi], title_text="strike")

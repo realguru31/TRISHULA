@@ -3,6 +3,13 @@
 Semantic versioning: MAJOR.MINOR.PATCH. The running version is shown in the app's
 status bar, every tab footer, and the Recorder diagnostics panel.
 
+## SPX BB app v0.47.0 — 2026-11-17 · 0DTE model: today-open and yesterday-close curves
+- 0DTE model chart: solid yellow "today open" = the model's 0DTE fit (open → low / high) measured from today's 09:30
+  open (premarket: current spot, moved once to the real open after 09:30, same %); dotted yellow "yesterday close" =
+  the model's close → next-day low / high fit on history to yesterday, measured from yesterday's close; red dotted
+  cautious (95 %) for the solid line. Ratios / ★ / table colours stay on the solid line. Model maths unchanged.
+- 1DTE unchanged (close-based, spot at the press). Spot line labelled OPEN / PREMKT.
+
 ## SPX BB app v0.46.0 — 2026-11-17 · compact: whole page fits at 80 % zoom
 - Base font 14 px, tighter spacing / captions; model charts 330 px, live charts 470 px; slimmer spot box.
 - sold C / sold P / ask alert on one row; long notes (SAFEST definition, buffer / MAE) behind ⓘ.

@@ -5,6 +5,8 @@ Rules unchanged: whole zip every time (delete trishula/ → unzip → commit →
 secrets only in Streamlit · one repo, no GitHub tokens · Colab scripts outside the repo, both tokens prefilled.
 
 ## QUEUED (low priority, not approved): recorder `_initial_spot` stamps SPX with RECEIPT time — on (re)connect outside hours Friday's close counts as live SPX for 60 s (seen 16 Nov 05:10: spot 7,561.67 "spx" vs ~7,531 synth). Fix: stamp with the trade's own time (as `_l_trade` does). Needs reboot.
+## RESEARCH (queued): after a gap, does open→low shrink or grow? which anchor do far bids respect? (compare the two yellow lines over days)
+## ✅ BUILT SPX BB v0.47.0 (APPROVE 17 Nov 14:06 ET, push after 16:00): 0DTE today-open solid + yesterday-close dotted curves
 ## ✅ BUILT SPX BB v0.46.0 (APPROVE 17 Nov 13:50 ET): compact layout, fits at 80 % zoom
 ## ✅ BUILT SPX BB v0.45.0 (APPROVE 17 Nov 13:46 ET): lighter inputs, 640 px charts, straddle backfill from 09:30
 ## ✅ BUILT SPX BB v0.44.0 (APPROVE 17 Nov 13:35 ET): MAE column for sold strikes (trade candles + live ask)
