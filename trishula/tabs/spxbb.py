@@ -77,12 +77,13 @@ def _run_model(trk: BB.Tracker):
         hy = h[h.index.date < now.date()]
         ycl = float(hy["Close"].iloc[-1])
         op = _today_open(trk)
-        spot, kind = (op, "today open") if op else (spot, "premarket spot")
-        run = EM.run_model(toggle="0DTE", spot=spot, history=h, now_et=now, spot_source=kind)
+        anchor, kind = (op, "today open") if op else (spot, "premarket spot")
+        run = EM.run_model(toggle="0DTE", spot=anchor, history=h, now_et=now, spot_source=kind)
         run_y = EM.run_model(toggle="1DTE", spot=ycl, history=hy, now_et=now, spot_source="yesterday close")
     else:
         run = EM.run_model(toggle=mode, spot=spot, now_et=now, spot_source=src)
     st.session_state["bb_model"] = dict(run=run, run_y=run_y, ycl=ycl, kind=kind, mode=mode, exp=exp, spot=spot,
+                                        anchor=float(run.spot),
                                         src=src, win={"put": run.display_window("put"), "call": run.display_window("call")})
 
 
@@ -111,7 +112,7 @@ def _reanchor_open(trk: BB.Tracker, m0: dict) -> dict:
     r = copy.copy(m0["run"])
     r.spot = op
     r.info = dict(r.info, spot=op, spot_source="today open")
-    m1 = dict(m0, run=r, spot=op, kind="today open",
+    m1 = dict(m0, run=r, anchor=op, kind="today open",
               win={"put": r.display_window("put"), "call": r.display_window("call")})
     st.session_state["bb_model"] = m1
     return m1
@@ -256,7 +257,7 @@ def _model_block(trk: BB.Tracker):
     i = m["run"].info
     cur = st.session_state.get("bb_mode", trk.cfg["mode"])
     b2.caption(f"last run {i['run_at_et']} ET · **{i['toggle']}** · {dt.date.fromisoformat(m['exp']):%a %d %b} · "
-               f"spot {i['spot']:,.2f} ({i['spot_source'] or '?'}) · VIX {i['vix']:.2f} ({i['vix_date']})")
+               f"spot {float(m['spot']):,.2f} ({m.get('src') or '?'}) · VIX {i['vix']:.2f} ({i['vix_date']})")
     if cur != m["mode"]:
         st.warning(f"These results were run for **{m['mode']}** — the toggle is now on {cur}. "
                    "Press Run model to refresh.")
@@ -305,7 +306,7 @@ def _model_live(trk: BB.Tracker):
             d = d[(d["strike"] >= lo) & (d["strike"] <= hi)]
             i_ = m["run"].info
             fit = (i_.get(f"{side}_fit") or {}).get("formula", "")
-            f = _fig(f"FAR OTM {m['mode']} {side.upper()}S — market bid vs expected loss · SPX {i_['spot']:,.2f} · "
+            f = _fig(f"FAR OTM {m['mode']} {side.upper()}S — market bid vs expected loss · SPX {float(m['spot']):,.2f} · "
                      f"VIX {i_['vix']:.2f}<br><span style='font-size:11px;color:#8b949e'>typical move ~ {fit}</span>",
                      h=330)
             f.update_layout(margin=dict(l=8, r=8, t=58, b=8), showlegend=True,
@@ -353,7 +354,7 @@ def _model_live(trk: BB.Tracker):
                               marker=dict(symbol="star", size=16, color="#f5c542", line=dict(color="#0e1117", width=1)),
                               hovertemplate=f"BEST ratio {best['strike']:.0f} · {best['ratio']:.2f}×<extra></extra>")
             f.add_vline(x=sp_, line=dict(color="#e6edf3", width=2))
-            f.add_annotation(x=sp_, y=1, yref="paper", yanchor="top", showarrow=False, text=f"{ {'today open': 'OPEN', 'premarket spot': 'PREMKT'}.get(m.get('kind'), 'SPX')} {sp_:,.2f}",
+            f.add_annotation(x=sp_, y=1, yref="paper", yanchor="top", showarrow=False, text=f"SPX {sp_:,.2f}",
                              xanchor="right" if side == "put" else "left", xshift=-4 if side == "put" else 4,
                              font=dict(color="#e6edf3", size=13), bgcolor="rgba(14,17,23,0.8)")
             f.update_xaxes(range=[lo, hi], title_text="strike")

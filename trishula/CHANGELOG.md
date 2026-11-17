@@ -3,6 +3,10 @@
 Semantic versioning: MAJOR.MINOR.PATCH. The running version is shown in the app's
 status bar, every tab footer, and the Recorder diagnostics panel.
 
+## SPX BB app v0.47.1 — 2026-11-17 · fix: SPX line / title / chart range back on live spot
+- v0.47.0 wrongly moved the white SPX line, the chart title and the chart's start to today's open. Back as before
+  (live spot at the press). Only the solid curve is measured from today's open; dotted from yesterday's close.
+
 ## SPX BB app v0.47.0 — 2026-11-17 · 0DTE model: today-open and yesterday-close curves
 - 0DTE model chart: solid yellow "today open" = the model's 0DTE fit (open → low / high) measured from today's 09:30
   open (premarket: current spot, moved once to the real open after 09:30, same %); dotted yellow "yesterday close" =
