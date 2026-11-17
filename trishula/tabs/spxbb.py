@@ -291,7 +291,7 @@ def render(trk: BB.Tracker):
     labels = {lab: f"{lab} · {dt.date.fromisoformat(d):%a %d %b}" + (" (EXPIRED)" if x else "") for lab, d, x in exps}
     # v0.35.1: one tidy bar — VIEW | ALERTS | TELEGRAM, each in its own bordered box, labels inline
     _ti = lambda v: BB.THRESHOLDS.index(int(v)) if int(v) in BB.THRESHOLDS else 1
-    mode = trk.cfg["mode"] if trk.cfg["mode"] in labels else "0DTE"
+    mode = "0DTE" if "0DTE" in labels else list(labels)[0]     # v0.38.0: a new page always opens on 0DTE
     vbox, abox, tbox = st.columns([4.2, 5.6, 2.2], vertical_alignment="top")
     with vbox.container(border=True):
         st.caption("VIEW · expiry · min bid")

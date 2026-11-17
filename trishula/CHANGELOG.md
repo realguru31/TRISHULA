@@ -3,6 +3,13 @@
 Semantic versioning: MAJOR.MINOR.PATCH. The running version is shown in the app's
 status bar, every tab footer, and the Recorder diagnostics panel.
 
+## SPX BB app v0.38.0 — 2026-11-17 · every day starts clean (alerts were dead today)
+- Bug: the jump-alert level ratcheted outward silently while alerts were off, so the 17 Nov expiry carried stray
+  1DTE / overnight 0.05 bids (5800P, 7950C) into today's 0DTE → the 6960 → 6850 put edge move sent nothing.
+- Now: outside its window the level COPIES the edge both ways; 0DTE window 09:30–16:00 ET weekdays, 1DTE 15:00–21:00.
+  First alert counts from the edge when the window opens. Levels are never reloaded after a restart.
+- Sold-strike and ask ≥ level warnings: once per DAY. View opens on 0DTE; saved view resets to 0DTE at 21:00.
+
 ## SPX BB app v0.37.0 — 2026-11-17 · edge model: live bids on frozen curves (TRISHULA stays v0.36.0)
 - Run model fits once and FREEZES the expected-loss / cautious curves, SAFEST / 2nd SAFEST and the reference spot.
   Every 5 s after that the bid dots, ★ best ratio, furthest put/call and the ratio cells re-price from live bids against

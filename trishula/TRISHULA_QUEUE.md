@@ -5,6 +5,7 @@ Rules unchanged: whole zip every time (delete trishula/ → unzip → commit →
 secrets only in Streamlit · one repo, no GitHub tokens · Colab scripts outside the repo, both tokens prefilled.
 
 ## QUEUED (low priority, not approved): recorder `_initial_spot` stamps SPX with RECEIPT time — on (re)connect outside hours Friday's close counts as live SPX for 60 s (seen 16 Nov 05:10: spot 7,561.67 "spx" vs ~7,531 synth). Fix: stamp with the trade's own time (as `_l_trade` does). Needs reboot.
+## ✅ BUILT SPX BB v0.38.0 (APPROVE 17 Nov 10:48 ET): clean daily alert levels, 0DTE alerts 09:30–16:00, opens on 0DTE
 ## ✅ BUILT SPX BB v0.37.0 (APPROVE 17 Nov 10:41 ET): model bids live on frozen curves; BB_VERSION separate
 ## ✅ BUILT v0.36.0 (APPROVE 16 Nov 17:27 ET): SPX BB split into its own app (spxbb.py, core/bbfeed.py); removed from TRISHULA
 ## ✅ BUILT v0.35.1 (APPROVE 16 Nov 12:27 ET): SPX BB control bar in three boxes

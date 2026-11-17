@@ -58,10 +58,7 @@ class Tracker:
                         self.series[k] = [tuple(r) for r in v]
                         self.seen.add(k)
                 self.alerts = [tuple(a) for a in (h.get("alerts") or []) if a[1] in self.series]
-                for k, v in (h.get("marks") or {}).items():
-                    e_, sd = k.split("|")
-                    if e_ in self.series:
-                        self.marks[(e_, sd)] = float(v)
+                # v0.38.0: alert levels are NOT reloaded — every day / every restart starts from the live edge
         except Exception:                          # noqa: BLE001
             pass
         try:
@@ -72,6 +69,7 @@ class Tracker:
                     self.cfg["thr0"] = self.cfg["thr1"] = int(saved["threshold"])
         except Exception:                          # noqa: BLE001
             pass
+        self._roll_base = None                     # v0.38.0: view resets to 0DTE at the 21:00 roll
 
     # ── config / telegram ─────────────────────────────────────────────────────────
     @property
@@ -163,6 +161,10 @@ class Tracker:
     # ── one check ───────────────────────────────────────────────────────────────
     def step(self):
         now = now_et().replace(tzinfo=None)
+        base = now.date() if now.time() < BB_ROLL else now.date() + dt.timedelta(days=1)
+        if self._roll_base is not None and base != self._roll_base:
+            self.set(mode="0DTE")                  # v0.38.0: a new BB day always starts on 0DTE
+        self._roll_base = base
         spot, src = self.rec.spot_now()
         if not spot == spot:
             return
@@ -198,25 +200,22 @@ class Tracker:
         if self._dirty and time.time() - self._saved_at >= SAVE_EVERY_S:
             self._dirty, self._saved_at = False, time.time()
             try:
-                ST.save_file(HIST_PATH, {"series": self.series, "alerts": self.alerts,
-                                         "marks": {f"{k[0]}|{k[1]}": v for k, v in self.marks.items()}},
-                             "SPX BB history")
+                ST.save_file(HIST_PATH, {"series": self.series, "alerts": self.alerts}, "SPX BB history")
             except Exception:                      # noqa: BLE001
                 self._dirty = True
 
     def alert_window(self, lab, now) -> bool:
-        """0DTE: always (while live) · 1DTE: only 15:00–21:00 ET."""
+        """v0.38.0 — 0DTE: 09:30–16:00 ET weekdays · 1DTE: 15:00–21:00 ET. Outside it the alert level copies the edge,
+        so each window starts clean from where the edge is when it opens (nothing carried from earlier / overnight)."""
         if lab == "1DTE":
             return ONE_DTE_FROM <= now.time() < ONE_DTE_TO
-        return True
+        return now.weekday() < 5 and dt.time(9, 30) <= now.time() < dt.time(16, 0)
 
     def _alerts(self, lab, exp, spot, src, e, now):
-        """Edge levels are kept per EXPIRY DATE (marks[(exp, side)]), so tomorrow's expiry keeps its level when it
-        turns from 1DTE into 0DTE at 21:00. Outside its window / switched off, the level follows the edge silently,
-        so the first alert after 15:00 is measured from the edge at 15:00, not from hours earlier."""
+        """v0.38.0: outside its window (or switched off / stale quotes) the level COPIES the edge both ways, so the first
+        alert counts from the edge at 09:30 (0DTE) / 15:00 (1DTE). Inside: one alert per ≥ thr jump outward, no repeats."""
         n = "0" if lab == "0DTE" else "1"
         live = (bool(self.cfg.get(f"alert{n}")) and self.alert_window(lab, now)
-                and not (dt.time(9, 15) <= now.time() < dt.time(9, 30))
                 and not (e["newest_ms"] and time.time() * 1000 - e["newest_ms"] > 120_000))
         thr = float(self.cfg.get(f"thr{n}") or 10)
         dlab = f"{lab} {dt.date.fromisoformat(exp):%a %d %b}"
@@ -228,8 +227,7 @@ class Tracker:
             if last is None:
                 self.marks[(exp, side)] = k
             elif not live:
-                if sgn * (k - last) > 0:               # follow outward silently
-                    self.marks[(exp, side)] = k
+                self.marks[(exp, side)] = k            # copy the edge, both ways
             elif sgn * (k - last) >= thr - 1e-9:
                 self.marks[(exp, side)] = k
                 self.alerts.append((now.isoformat(timespec="seconds"), exp, side, k))
@@ -243,7 +241,7 @@ class Tracker:
             sold = float(self.cfg.get(f"sold_{side}") or 0)
             if sold > 0 and live and lab == self.cfg["mode"]:    # sold strikes = the expiry you are viewing
                 through = (k >= sold) if side == "call" else (k <= sold)
-                key = (exp, side, sold)
+                key = (now.date(), exp, side, sold)              # once per day
                 if through and not self.warned.get(key):
                     self.warned[key] = True
                     sb, sa = self.quote(exp, sold, sgn)
@@ -264,7 +262,7 @@ class Tracker:
             if k <= 0:
                 continue
             b, a = self.quote(exp, k, cp)
-            key = ("ask", exp, side, k, lvl)
+            key = ("ask", now.date(), exp, side, k, lvl)
             if a == a and a >= lvl - 1e-9 and not self.warned.get(key):
                 self.warned[key] = True
                 edge = (e.get("ce") if side == "call" else e.get("pe")) or (float("nan"),)
