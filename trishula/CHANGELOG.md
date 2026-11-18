@@ -3,6 +3,10 @@
 Semantic versioning: MAJOR.MINOR.PATCH. The running version is shown in the app's
 status bar, every tab footer, and the Recorder diagnostics panel.
 
+## v0.37.1 — 2026-11-18 · close copy sent twice (16:05 and 16:11)
+- A shipper left over from the previous version (still running after an update, with a frozen recorder) could upload a
+  stale ..._close.zip at 16:05. The current recorder now re-sends the close copy at 16:11, so the final file is fresh.
+
 ## v0.37.0 — 2026-11-18 · day data saved to GitHub three times a day
 - 17 Nov's dump never reached GitHub (container restarted, error lost). Now AutoShip sends safety copies at 12:00 and
   14:00 ET plus the close copy at 16:05 (each retried every minute for 14 min); once the close copy is up the day's

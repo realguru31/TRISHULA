@@ -30,7 +30,9 @@ AUTO_FROM, AUTO_TO = dt.time(16, 5), dt.time(16, 14)
 # replaces the day's intraday copies once it is up. Every attempt is logged to state/ship_log.json on the state branch
 # (survives a container restart, so a failed send can be diagnosed).
 SLOTS = [(dt.time(12, 0), dt.time(12, 14), "1200"), (dt.time(14, 0), dt.time(14, 14), "1400"),
-         (AUTO_FROM, AUTO_TO, "close")]
+         (AUTO_FROM, AUTO_TO, "close"),
+         (dt.time(16, 11), AUTO_TO, "close#2")]    # re-send: the final copy is always from the CURRENT recorder
+                                                   # (an older version's shipper still running may send at 16:05)
 LOG_PATH = "state/ship_log.json"
 _log: list = []
 
@@ -196,9 +198,9 @@ class AutoShip:
                         if not (a <= n.time() <= b) or (today, label) in done:
                             continue
                         try:
-                            name = send(self.rec, label)
+                            name = send(self.rec, label.split("#")[0])
                             done.add((today, label))
-                            if label == "close":
+                            if label.startswith("close"):
                                 status["auto_done"] = today
                                 try:
                                     _drop_intraday(today, name)
