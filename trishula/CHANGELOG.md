@@ -3,6 +3,11 @@
 Semantic versioning: MAJOR.MINOR.PATCH. The running version is shown in the app's
 status bar, every tab footer, and the Recorder diagnostics panel.
 
+## v0.37.0 — 2026-11-18 · day data saved to GitHub three times a day
+- 17 Nov's dump never reached GitHub (container restarted, error lost). Now AutoShip sends safety copies at 12:00 and
+  14:00 ET plus the close copy at 16:05 (each retried every minute for 14 min); once the close copy is up the day's
+  intraday copies are deleted. Every attempt (ok / error) is logged to state/ship_log.json on the state branch.
+
 ## SPX BB app v0.47.2 — 2026-11-17 · put / call model tables always 4 rows (charts line up)
 - "★ Best ratio" (and "Furthest") rows always shown; when nothing qualifies: "none · all bids inside the 50¢ zone".
 

@@ -5,7 +5,7 @@
   what    the same zip as "📦 prepare today's data" (prints with spreadLeg, chain snapshots, spot, ES, candles, OI log,
           legs, status, lean minutes) — asset name trishula_day_<YYYYMMDD>_<HHMM>.zip (<HHMM> = ET at the send;
           the automatic one after the close is ..._close.zip)
-  when    automatically once a day at 16:05–16:14 ET (before the 16:15 roll moves the recorder to the next expiry)
+  when    automatically at 12:00, 14:00 and 16:05 ET (v0.37.0 safety copies; the close copy replaces them)
           + the 📤 button for a mid-session copy
   keep    the newest KEEP_DAYS data releases; older ones (and their tags) are deleted after every send
   token   GITHUB_STATE_TOKEN (fine-grained, this repo only, Contents read/write — covers releases). No token → off.
@@ -26,6 +26,31 @@ status: dict = {"last": None, "error": None, "auto_done": None, "pruned": None}
 KEEP_DAYS = 10            # data releases kept on GitHub (older ones + their tags are deleted after each send)
 _busy = threading.Lock()
 AUTO_FROM, AUTO_TO = dt.time(16, 5), dt.time(16, 14)
+# v0.37.0: safety copies during the day + the close; each retried every minute inside its window. The close copy
+# replaces the day's intraday copies once it is up. Every attempt is logged to state/ship_log.json on the state branch
+# (survives a container restart, so a failed send can be diagnosed).
+SLOTS = [(dt.time(12, 0), dt.time(12, 14), "1200"), (dt.time(14, 0), dt.time(14, 14), "1400"),
+         (AUTO_FROM, AUTO_TO, "close")]
+LOG_PATH = "state/ship_log.json"
+_log: list = []
+
+
+def _note(day: str, label: str, ok: bool, msg: str) -> None:
+    from .timeutil import now_et
+    _log.append({"t": now_et().strftime("%Y-%m-%d %H:%M:%S"), "day": day, "slot": label, "ok": ok, "msg": msg[:200]})
+    del _log[:-40]
+    try:
+        ST.save_file(LOG_PATH, {"log": _log}, f"ship {day} {label} {'ok' if ok else 'FAILED'}")
+    except Exception:                                    # noqa: BLE001
+        pass
+
+
+def _drop_intraday(day: str, keep_name: str) -> None:
+    """After the close copy is up, delete that day's intraday copies (…_1200 / …_1400 / manual) to save space."""
+    rel = _release(day)
+    for a in rel.get("assets", []):
+        if a.get("name") != keep_name and a.get("name", "").startswith("trishula_day_"):
+            ST._api("DELETE", f"/releases/assets/{a['id']}")
 
 
 def day_zip(rec) -> bytes:
@@ -160,18 +185,28 @@ class AutoShip:
 
     def _run(self):
         from .timeutil import now_et
+        done: set = set()                                # (day, label) sent by this container
         while True:
             try:
                 n = now_et()
                 today = n.strftime("%Y-%m-%d")
                 live = bool(self.rec.exps) and str(self.rec.exps[0]) == today
-                if (ST._cfg["token"] and live and n.weekday() < 5 and AUTO_FROM <= n.time() <= AUTO_TO
-                        and status.get("auto_done") != today):
-                    try:
-                        send(self.rec, "close")
-                        status["auto_done"] = today
-                    except Exception:                    # noqa: BLE001 — retried next minute until 16:14
-                        pass
+                if ST._cfg["token"] and live and n.weekday() < 5:
+                    for a, b, label in SLOTS:
+                        if not (a <= n.time() <= b) or (today, label) in done:
+                            continue
+                        try:
+                            name = send(self.rec, label)
+                            done.add((today, label))
+                            if label == "close":
+                                status["auto_done"] = today
+                                try:
+                                    _drop_intraday(today, name)
+                                except Exception:        # noqa: BLE001
+                                    pass
+                            _note(today, label, True, status.get("last") or name)
+                        except Exception as e:           # noqa: BLE001 — retried next minute inside the window
+                            _note(today, label, False, f"{type(e).__name__}: {e}")
             except Exception:                            # noqa: BLE001
                 pass
             time.sleep(60)

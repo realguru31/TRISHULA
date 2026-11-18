@@ -5,6 +5,7 @@ Rules unchanged: whole zip every time (delete trishula/ → unzip → commit →
 secrets only in Streamlit · one repo, no GitHub tokens · Colab scripts outside the repo, both tokens prefilled.
 
 ## QUEUED (low priority, not approved): recorder `_initial_spot` stamps SPX with RECEIPT time — on (re)connect outside hours Friday's close counts as live SPX for 60 s (seen 16 Nov 05:10: spot 7,561.67 "spx" vs ~7,531 synth). Fix: stamp with the trade's own time (as `_l_trade` does). Needs reboot.
+## ✅ BUILT v0.37.0 (18 Nov 11:00 ET, user: "set up a multi github save now"): 12:00 / 14:00 / 16:05 sends + ship_log on state branch
 ## ✅ BUILT SPX BB v0.47.2 (APPROVE 17 Nov 14:15 ET): model tables always 4 rows
 ## ✅ FIX SPX BB v0.47.1 (17 Nov 14:11 ET): SPX line / title / chart range back on live spot
 ## RESEARCH (queued): after a gap, does open→low shrink or grow? which anchor do far bids respect? (compare the two yellow lines over days)
