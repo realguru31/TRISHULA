@@ -160,7 +160,8 @@ def _dash(rec, exp, legs, cfg, ridge):
     labs = sorted({R3._label(k, cp) for k, cp in zip(mt["strike"], mt["cp"])}, key=lambda x: (float(x[:-1].replace(",", "")), x[-1])) if len(mt) else []
     hot = list(dict.fromkeys(R3._label(k, cp) for k, cp in zip(spk["strike"][::-1], spk["cp"][::-1]))) if len(spk) else []
     t0, t1 = R3.window_bounds(day, mt, asof, tb["win"])
-    ks = (R3.ridgeline_strikes(mt, spot, bars, t0, t1) if tb["view"] == "ridgeline"
+    ks = (R3.ridgeline_strikes(mt, spot, bars, t0, t1, half=120.0, pad=40.0) if tb["view"] == "AG tilt"
+          else R3.ridgeline_strikes(mt, spot, bars, t0, t1) if tb["view"] == "ridgeline"
           else R3.ridge_strikes(mt, spot, st.session_state.get("_ag_ctl"), ridge, bars, t0, t1))
     auto = R3.auto_pin(spk, t0, t1, ks, tb["side"])
     ss = st.session_state
@@ -210,7 +211,13 @@ def _dash(rec, exp, legs, cfg, ridge):
     st.caption(f"pinned: **{_pl(pin)}**" + (" · auto (strongest spike)" if pick is None else " · your pick"))
     a3, s3, b3 = st.columns([3, 0.55, 1])
     with a3:
-        if tb["view"] in ("3D", "ridgeline") and len(ks):
+        if tb["view"] == "AG tilt" and len(ks):
+            from core import ridges_ag as RA
+            fig = RA.tilt(mt, bars, t0, t1, ks, pin=pin, side=tb["side"],
+                          title=f"AG TILT · {t0:%H:%M}–{t1:%H:%M} · {legs} legs · {' + '.join(pd.Timestamp(e_).strftime('%d %b') for e_ in rexp)}"
+                                f" · bursts above {RA.TILT_X:g}× own {RA.TILT_WIN}-min median · red = pinned {_pl(pin)}")
+            st.plotly_chart(fig, width="stretch", key="ag_ridges")
+        elif tb["view"] in ("3D", "ridgeline") and len(ks):
             from core import ridges_ag as RA
             cd = R3.pane_for(pr, spk, pin, t0, t1, rexp, rec.greeks, tb["side"], R3.candles_for(rec, rexp, day),
                              legs=dict(rec.legs)) if pin else None

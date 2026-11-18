@@ -3,6 +3,12 @@
 Semantic versioning: MAJOR.MINOR.PATCH. The running version is shown in the app's
 status bar, every tab footer, and the Recorder diagnostics panel.
 
+## v0.38.0 — 2026-11-18 · AG-REV ridges: "AG tilt" view
+- New view in the V5 ridges toolbar, built against AG's 17 Nov screenshot: tilted perspective (far strikes small at the
+  top, near strikes wide at the bottom), SPX through the strikes it trades at, and a ridge only rises for minutes
+  above 2× that strike's own 30-min median (steady ATM churn stays flat). Pinned strike red, 3 busiest yellow, next 5
+  green, rest cyan. Uses the Legs control (All / Single / Multi). Strikes ±120 around spot (+ price path ± 40).
+
 ## v0.37.1 — 2026-11-18 · close copy sent twice (16:05 and 16:11)
 - A shipper left over from the previous version (still running after an update, with a frozen recorder) could upload a
   stale ..._close.zip at 16:05. The current recorder now re-sends the close copy at 16:11, so the final file is fresh.

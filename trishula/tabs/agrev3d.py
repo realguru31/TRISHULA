@@ -27,9 +27,11 @@ def toolbar():
     ss = st.session_state
     c = st.columns([1.0, 1.55, 1.6, 1.3, 1.3, 1.5, 1.4])
     c[0].segmented_control("side", ["C", "P", "C+P"], default="C+P", key="r3_side", label_visibility="collapsed")
-    c[1].segmented_control("view", ["ridgeline", "3D", "map"], default="ridgeline", key="r3_view", label_visibility="collapsed",
+    c[1].segmented_control("view", ["ridgeline", "AG tilt", "3D", "map"], default="ridgeline", key="r3_view",
+                           label_visibility="collapsed",
                            help="ridgeline (default, v0.18) = flat AG-style ridges: each ridge sits AT its strike, SPX on the "
-                                "same price axis, nearer ridges hide the ones behind · 3D = the 3-D ridges (AG camera) · "
+                                "same price axis, nearer ridges hide the ones behind · AG tilt (v0.38) = AG's tilted view, only "
+                                "bursts above each strike's own normal flow rise · 3D = the 3-D ridges (AG camera) · "
                                 "map = the older 2-D view")
     c[2].segmented_control("window", ["RTH", "2h", "4h", "session"], default="RTH", key="r3_win",
                            label_visibility="collapsed", help="RTH = from 09:30 (before the open: the last 4 h) · 2h / 4h = "

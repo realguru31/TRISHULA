@@ -428,3 +428,77 @@ def ridgeline(mt, spk, bars, t0, t1, strikes, pin=None, side="C+P", top=1, contr
                     margin=dict(l=6, r=6, t=34, b=6), hovermode="closest", showlegend=bool(has_pane and len(contract) > 1),
                     title=dict(text=title, font=dict(size=12, color="#c9d1d9"), x=0.01))
     return f
+
+
+# ── v0.38.0 "AG tilt": AG's tilted 3-D look (17 Nov comparison, user-approved 18 Nov) ─────────────────────────────
+TILT_X, TILT_WIN = 2.0, 30          # a minute rises only above TILT_X × the strike's own rolling TILT_WIN-min median
+TILT_CYAN, TILT_Y, TILT_G = "#4fd1e8", "#facc15", "#a3e635"
+
+
+def tilt(mt, bars, t0, t1, strikes, pin=None, side="C+P", h=760, title="", burst_x=TILT_X, win=TILT_WIN):
+    """Perspective ridgeline like AG's screenshot: far strikes (top) small and narrow, near strikes (bottom) wide; each
+    ridge = contracts / min ABOVE burst_x × its own rolling median (steady churn stays flat, bursts stand up);
+    one linear scale (tallest burst); SPX drawn through the strikes it trades at; the pinned strike red, the 3 busiest
+    yellow, the next 5 green, the rest cyan."""
+    idx = pd.date_range(t0, t1, freq="1min")
+    win_ = mt[(mt["m"] >= t0) & (mt["m"] <= t1)] if len(mt) else mt
+    V = volume_matrix(win_, idx, side, "size") if len(win_) else pd.DataFrame(index=idx)
+    ks = [k for k in sorted(strikes) if k in V.columns]
+    f = go.Figure()
+    if len(ks) < 3:
+        f.add_annotation(text="no volume in this window yet", x=0.5, y=0.5, xref="paper", yref="paper",
+                         showarrow=False, font=dict(color="#6e7681"))
+        f.update_layout(template="plotly_dark", paper_bgcolor=BG, plot_bgcolor=BG, height=420)
+        return f
+    V = V[ks]
+    E = (V - burst_x * V.rolling(win, min_periods=5).median().bfill()).clip(lower=0)
+    top = float(np.nanmax(E.values)) if np.isfinite(E.values).any() and float(np.nanmax(E.values)) > 0 else 1.0
+    tot = V.sum().sort_values(ascending=False)
+    yellow, green = set(tot.index[:3]), set(tot.index[3:8])
+    k0, k1 = min(ks), max(ks)
+    n = len(idx)
+    tx = np.arange(n) / max(1, n - 1)
+
+    def proj(t, k, hgt=0.0):
+        d = (k1 - k) / (k1 - k0) if k1 > k0 else 0.5          # far 0 → near 1
+        s = 0.55 + 0.45 * d
+        t = np.asarray(t, dtype=float)
+        return 0.5 + (t - 0.5) * s, np.zeros_like(t) + 0.80 - 0.62 * d ** 1.15 + hgt * s
+
+    H = 0.16
+    pk = pin[0] if pin else None
+    for k in sorted(ks, reverse=True):                          # far first → nearer ridges drawn over them
+        xb, yb = proj(tx, k)
+        x, y = proj(tx, k, E[k].values / top * H)
+        c = "#ff4d4d" if k == pk else TILT_Y if k in yellow else TILT_G if k in green else TILT_CYAN
+        f.add_scatter(x=xb, y=yb, mode="lines", line=dict(width=0), hoverinfo="skip", showlegend=False)
+        f.add_scatter(x=x, y=y, mode="lines", fill="tonexty", fillcolor=BG, showlegend=False,
+                      line=dict(color=c, width=2.0 if c != TILT_CYAN else 1.1),
+                      customdata=np.c_[V[k].values, E[k].values], text=[t.strftime("%H:%M") for t in idx],
+                      hovertemplate=f"{k:,.0f} · %{{text}} · %{{customdata[0]:,.0f}} c/min "
+                                    f"(burst %{{customdata[1]:,.0f}})<extra></extra>")
+    if bars is not None and len(bars):
+        b = bars[(bars["t"] >= t0) & (bars["t"] <= t1)].set_index("t")["c"].astype(float)
+        b = b.reindex(idx).interpolate(limit_area="inside")
+        ok = b.notna().values
+        px, py = proj(tx[ok], np.clip(b.values[ok], k0, k1))
+        f.add_scatter(x=px, y=py, mode="lines", line=dict(color="white", width=2.2), showlegend=False,
+                      text=[f"SPX {t:%H:%M} {v:,.2f}" for t, v in zip(idx[ok], b.values[ok])], hoverinfo="text")
+    step = max(1, len(ks) // 6)
+    labs = ks[::step] if (len(ks) - 1) % step == 0 else ks[::step][:-1] + [k1]
+    for k in labs:
+        x, y = proj(1.0, k)
+        f.add_annotation(x=x + 0.012, y=y, text=f"{k:,.0f}", showarrow=False, xanchor="left",
+                         font=dict(size=10, color="#cfd8ff"))
+    for t in pd.date_range(t0.ceil("60min"), t1, freq="60min"):
+        x, y = proj((t - t0) / (t1 - t0), k0)
+        f.add_annotation(x=x, y=y - 0.03, text=f"{t:%H:%M}", showarrow=False, font=dict(size=10, color="#8b9bc4"))
+    f.add_annotation(text=f"tallest burst = {top:,.0f} c/min above {burst_x:g}× own {win}-min median",
+                     xref="paper", yref="paper", x=0.995, y=1.0, xanchor="right", yanchor="bottom", showarrow=False,
+                     font=dict(size=10, color="#8b9bc4"))
+    f.update_layout(template="plotly_dark", paper_bgcolor=BG, plot_bgcolor=BG, height=h,
+                    title=dict(text=title, font=dict(size=12, color="#c9d1d9"), x=0.01),
+                    margin=dict(l=8, r=40, t=40, b=8), hovermode="closest")
+    f.update_xaxes(visible=False, range=[0, 1.04])
+    f.update_yaxes(visible=False, range=[0.12, 1.0])
+    return f
