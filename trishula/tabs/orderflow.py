@@ -146,9 +146,9 @@ def footprint(a, b, legs, bar="15min", last=None, row=OF.ROW, name="SPX"):
 
 
 # ── v0.41.0 unusual options marks ────────────────────────────────────────────────────────────────────────────────────
-UNU = {"big prints": "big", "bursts": "burst", "paying up": "pay", "new positions": "new"}
+UNU = {"big orders": "big", "bursts": "burst", "paying up": "pay", "new positions": "new"}
 SHAPE = {"big": "circle", "burst": "diamond", "pay": "triangle-up", "new": "square", "multi": "star"}
-LBL = {"big": "big print", "burst": "burst", "pay": "paying up", "new": "new position", "multi": "2+ flags"}
+LBL = {"big": "big order", "burst": "burst", "pay": "paying up", "new": "new position", "multi": "2+ flags"}
 
 
 def _t(ms):
@@ -191,7 +191,12 @@ def add_marks(fig, g, bursts, on, view, a, last=None, sel=None, rowcol=None):
         cd = np.stack([[f"{v:g}" for v in d["strike"]], np.where(d["cp"] > 0, "C", "P"), [f"{v:,.0f}" for v in d["size"]],
                        [f"{v:.2f}" for v in d["px"]], np.where(d["aggr"] > 0, "bought", "sold"),
                        [f"{v / 1e3:,.0f}" for v in d["prem"]]], axis=1)
-        fig.add_scatter(x=x, y=y, mode="markers", name=LBL[k], customdata=cd, showlegend=False,
+        txt = [f"{a_}{b_} {'bot' if c_ == 'bought' else 'sold'} {d_} · ${e_}k" for a_, b_, d_, c_, e_ in
+               zip(cd[:, 0], cd[:, 1], cd[:, 2], cd[:, 4], cd[:, 5])]
+        if k == "new" and "oi" in d:                     # new positions: say how big the position was
+            txt = [f"{a_}{b_} vol > OI {o_:,.0f}" for a_, b_, o_ in zip(cd[:, 0], cd[:, 1], d["oi"].values)]
+        fig.add_scatter(x=x, y=y, mode="markers+text", text=txt, textposition="top center", name=LBL[k],
+                        textfont=dict(size=10, color="#e6edf3"), customdata=cd, showlegend=False,
                         marker=dict(symbol=SHAPE[k], size=sz(d["size"].values), color=np.where(bull > 0, BLUE, MAG),
                                     line=dict(color="white", width=0.8), opacity=0.9),
                         hovertemplate=f"{LBL[k]} · %{{customdata[0]}}%{{customdata[1]}} · %{{customdata[2]}} @ "
@@ -218,32 +223,27 @@ def unusual_controls():
     p = dict(UN.DEF)
     if not on:
         return on, p, None
-    W = [15, 30, 60, 120, "day"]
+    N = [5, 10, 20]
+    fn = lambda v: f"top {v}"                            # noqa: E731
     if "big" in on:
         c = st.columns([1.2, 2, 3, 2])
-        c[0].markdown("**big prints**")
-        p["big_pct"] = c[1].segmented_control("big cut", [99.0, 99.5, 99.9, 99.97, 99.99], default=99.9, key="of_big_pct",
-                                              format_func=lambda v: f"top {round(100 - v, 2):g} %") or 99.9
-        p["big_win"] = c[2].segmented_control("big lookback", W, default=60, key="of_big_win",
-                                              format_func=lambda v: "full day" if v == "day" else f"{v} min") or 60
-        p["big_floor"] = c[3].segmented_control("big floor", [3.0, 5.0, 10.0], default=5.0, key="of_big_floor",
-                                                format_func=lambda v: f"≥ {v:g}× median") or 5.0
+        c[0].markdown("**big orders**")
+        p["big_n"] = c[1].segmented_control("big n", N, default=10, key="of_big_n", format_func=fn) or 10
+        c[2].caption("by delta notional · prints on one contract, same side, same second = one order")
     if "burst" in on:
         c = st.columns([1.2, 2, 3, 2])
         c[0].markdown("**bursts**")
-        p["burst_k"] = c[1].segmented_control("burst k", [2.0, 3.0, 5.0, 10.0, 20.0], default=3.0, key="of_burst_k",
-                                              format_func=lambda v: f"{v:g}×") or 3.0
+        p["burst_k"] = c[1].segmented_control("burst k", [2.0, 3.0, 5.0, 10.0], default=3.0, key="of_burst_k",
+                                              format_func=lambda v: f"> {v:g}× median") or 3.0
         p["burst_win"] = c[2].segmented_control("burst median", [15, 30, 60], default=30, key="of_burst_win",
-                                                format_func=lambda v: f"median {v} min") or 30
+                                                format_func=lambda v: f"median of {v} min") or 30
+        p["burst_n"] = c[3].segmented_control("burst n", N, default=10, key="of_burst_n", format_func=fn) or 10
     if "pay" in on:
         c = st.columns([1.2, 2, 3, 2])
         c[0].markdown("**paying up**")
         p["pay_mode"] = c[1].segmented_control("pay mode", ["at or through", "through only"], default="at or through",
                                                key="of_pay_mode") or "at or through"
-        p["pay_pct"] = c[2].segmented_control("pay cut", [99.0, 99.5, 99.9, 99.97, 99.99], default=99.9, key="of_pay_pct",
-                                              format_func=lambda v: f"size top {round(100 - v, 2):g} %") or 99.9
-        p["pay_win"] = c[3].segmented_control("pay lookback", W, default=60, key="of_pay_win",
-                                              format_func=lambda v: "day" if v == "day" else f"{v}m") or 60
+        p["pay_n"] = c[2].segmented_control("pay n", N, default=10, key="of_pay_n", format_func=fn) or 10
     if "new" in on:
         c = st.columns([1.2, 2, 3, 2])
         c[0].markdown("**new positions**")
@@ -251,12 +251,13 @@ def unusual_controls():
                                                 format_func=lambda v: f"volume ≥ {v:g}× OI") or 1.0
         p["new_min_oi"] = c[2].segmented_control("new min oi", [50, 100, 500, 1000], default=100, key="of_new_min_oi",
                                                  format_func=lambda v: f"OI ≥ {v:,}") or 100
+        p["new_n"] = c[3].segmented_control("new n", N, default=10, key="of_new_n", format_func=fn) or 10
     c = st.columns([1.2, 2, 3, 2])
     c[0].markdown("**table**")
     tb = dict(n=c[1].segmented_control("rows", [20, 50, 100], default=20, key="of_tab_n",
                                        format_func=lambda v: f"top {v}") or 20,
-              sort=c[2].segmented_control("sort", ["premium", "size", "time"], default="premium", key="of_tab_sort",
-                                          format_func=lambda v: f"by {v}") or "premium",
+              sort=c[2].segmented_control("sort", ["delta $", "premium", "size", "time"], default="delta $",
+                                          key="of_tab_sort", format_func=lambda v: f"by {v}") or "delta $",
               min_flags=c[3].segmented_control("min flags", [1, 2], default=1, key="of_tab_min",
                                                format_func=lambda v: "any flag" if v == 1 else "2+ flags") or 1)
     return on, p, tb
@@ -307,8 +308,9 @@ def render(rec):
         cnt = ""
         if on:
             try:
-                fx = UN.frame(rec, m, str(exps[0]) if m == "SPX" else (getattr(rec, "xinfo", {}) or {}).get(m, {}).get("exp", ""))
-                g, bu = UN.detect(fx, m, day, legs, on, prm)
+                xe = str(exps[0]) if m == "SPX" else (getattr(rec, "xinfo", {}) or {}).get(m, {}).get("exp", "")
+                fx = UN.frame(rec, m, str(exps[0]))
+                g, bu = UN.detect(fx, m, day, legs, on, prm, exp=xe)
                 if len(g):
                     tabs.append(UN.table(g, on, m, tb["n"], tb["sort"], tb["min_flags"]))
                     cnt = " · unusual: " + " · ".join(
@@ -328,7 +330,7 @@ def render(rec):
         t = pd.concat([x for x in tabs if len(x)], ignore_index=True) if any(len(x) for x in tabs) else pd.DataFrame()
         if len(t):
             if len(tabs) > 1:
-                t = t.sort_values({"premium": "premium $", "size": "size", "time": "_ts"}[tb["sort"]],
+                t = t.sort_values({"delta $": "delta $M", "premium": "premium $", "size": "size", "time": "_ts"}[tb["sort"]],
                                   ascending=False).head(tb["n"]).reset_index(drop=True)
             st.session_state["_of_tab_rows"] = t
             st.dataframe(t.drop(columns=["_ts", "_S"]), hide_index=True, width="stretch", key="of_tab",

@@ -4,20 +4,22 @@ Semantic versioning: MAJOR.MINOR.PATCH. The running version is shown in the app'
 status bar, every tab footer, and the Recorder diagnostics panel.
 
 ## v0.41.0 — 2026-11-20 · OrderFlow: unusual options (4 toggles + table), SPX / ES / SPY
-- Toggles (each on its own, or together; nothing changes when all are off):
-  1 big prints — single-leg print ≥ the market's own rolling size percentile (top 1 / 0.5 / 0.1 / 0.03 / 0.01 % of the
-    last 15 / 30 / 60 / 120 min or the whole day) and ≥ 3 / 5 / 10 × the median print — adaptive, no fixed N.
-  2 bursts — a strike trading > 2 / 3 / 5 / 10 / 20 × its own rolling 15 / 30 / 60-min median minute (and above the
-    market's typical busy strike-minute).
-  3 paying up — at-or-through (or through-only) the quote, with its own adaptive size cut.
-  4 new positions — a contract's volume today reaching 1 / 1.5 / 2 × its prior-close OI (OI ≥ 50 / 100 / 500 / 1,000).
-- Marks on the candles (and footprint) at the underlying price and time: blue = bullish (calls bought / puts sold),
-  magenta = bearish; size = contracts; shape per flag, star = 2+ flags. Hover: contract, size, price, side, premium.
-- Table: time, strike, C/P, size, price, bought/sold, read, premium $, vs spot, flags hit; top 20 / 50 / 100 by
-  premium / size / time; any flag or 2+ flags; click a row → yellow ring on the chart.
+- ORDERS, not prints: prints on the same contract, same side, same second = one order (a 500-lot fills as 50–70
+  prints). Size that matters = delta notional (|Δ| × contracts × multiplier × underlying, Δ from the order's price).
+  Uses the single-leg / all toggle (ES feed has no spread-leg flag).
+- Toggles (each on its own, or together; nothing changes when all are off), each showing only the top 5 / 10 / 20:
+  1 big orders — biggest orders of the day by delta notional (top-N adapts by itself, no fixed size).
+  2 bursts — a strike trading > 2 / 3 / 5 / 10 × its own rolling 15 / 30 / 60-min median minute (and above the
+    market's typical busy strike-minute); ranked by that multiple.
+  3 paying up — orders at-or-through (or through-only) the quote; ranked by delta notional.
+  4 new positions — volume today reaching 1 / 1.5 / 2 × prior-close OI (OI ≥ 50 / 100 / 500 / 1,000); largest OI first.
+- Marks on the candles (and footprint) at the underlying price and time, labelled ("7375C sold 571 · $305k"):
+  blue = bullish (calls bought / puts sold), magenta = bearish; size = contracts; shape per flag, star = 2+ flags.
+- Table: time, strike, C/P, size, price, bought/sold, read, premium $, delta $M, vs spot, flags hit; top 20 / 50 / 100
+  by delta $ / premium / size / time; any flag or 2+ flags; click a row → yellow ring on the chart.
 - Recorder: ES / SPY prints keep their contract symbol; open interest subscribed for the ES / SPY strikes (needs restart).
-- 18 Nov SPX counts at the defaults: big 981 / bursts 2,834 / paying up 794 / new 109 per day; at top 0.01 % and 20×:
-  104 / 243 / 78.
+- 18 Nov SPX top 10: 12:23 7375C sold 571 ($305k) 10 min before the 12:33 high; 13:11 7290P + 7315P bought $904k near
+  the 7315 low (price then rallied).
 
 ## v0.40.0 — 2026-11-20 · OrderFlow: ES options + SPY options (SPX / ES / SPY / 3 stacked)
 - Recorder also streams the nearest-expiry ES options (strikes ±4.5 % of ES) and SPY options (±4 % of SPY): every
