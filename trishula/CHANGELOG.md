@@ -3,6 +3,14 @@
 Semantic versioning: MAJOR.MINOR.PATCH. The running version is shown in the app's
 status bar, every tab footer, and the Recorder diagnostics panel.
 
+## v0.39.0 — 2026-11-20 · VS3D → OrderFlow tab (options delta map / footprint)
+- New sub-tab next to Lean. Every 0DTE print → customer delta (aggressor × option delta × size × 100) placed at the SPX
+  price where it traded; per minute × 2-pt rows, incremental on the print store (core/orderflow.py).
+- View toggle: candles (default) = 5-min × 2-pt delta map under SPX candles + cumulative options delta vs SPX;
+  footprint = 15-min bars, each cell "sold × bought" (k Δ), coloured by net, bar total under each bar (last 3h / full day).
+- prints toggle single-leg (default) / all. Colours as Lean: blue = deltas bought, magenta = sold.
+- 18 Nov check: tracks the bar's move (single-leg 5-min corr +0.66 vs all +0.60), does not predict the next bar.
+
 ## v0.38.0 — 2026-11-18 · AG-REV ridges: "AG tilt" view
 - New view in the V5 ridges toolbar, built against AG's 17 Nov screenshot: tilted perspective (far strikes small at the
   top, near strikes wide at the bottom), SPX through the strikes it trades at, and a ridge only rises for minutes

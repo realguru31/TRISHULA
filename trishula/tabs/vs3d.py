@@ -32,7 +32,7 @@ from core.timeutil import ET
 BG = "#0e1117"
 TEAL, RED = "#26a69a", "#ef5350"
 SUBTABS = ["VS3D (combined)", "Book (by strike)", "Terrain (gradient)", "Interval (bubbles)",
-           "Market Read", "GEX³ (3-lens)", "DT", "Lean"]
+           "Market Read", "GEX³ (3-lens)", "DT", "Lean", "OrderFlow"]
 
 
 # ── controls ─────────────────────────────────────────────────────────────
@@ -756,6 +756,13 @@ def render(rec, ctl, ts_ms=None):
                 LT.render(rec)
             except Exception as e:                           # noqa: BLE001
                 st.error(f"Lean error: {type(e).__name__}: {e}")
+    if tabs[8].open:
+        with tabs[8]:
+            from tabs import orderflow as OFT
+            try:
+                OFT.render(rec)
+            except Exception as e:                           # noqa: BLE001
+                st.error(f"OrderFlow error: {type(e).__name__}: {e}")
 
 
 def _dt_classic(rec, exps, ts_ms):
