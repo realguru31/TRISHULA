@@ -77,3 +77,90 @@ def minutes(rec, exp: str) -> pd.DataFrame:
         with rec.lock:
             rec._oflow = st_
     return st_["agg"] if st_["agg"] is not None else pd.DataFrame(columns=cols)
+
+
+# ── v0.40.0: ES options + SPY options (same view, own underlying) ─────────────────────────────────────────────────────
+XROW = {"ES": 2.0, "SPY": 0.2}
+
+
+def _bs_d(S, K, T, iv, cp):
+    from scipy.special import ndtr
+    T = np.maximum(T, 1e-6)
+    d1 = (np.log(np.maximum(S, 1e-9) / K) + 0.5 * iv * iv * T) / (iv * np.sqrt(T))
+    nd = ndtr(d1)
+    return np.where(cp > 0, nd, nd - 1.0), d1
+
+
+def _bs_px(S, K, T, iv, cp):
+    from scipy.special import ndtr
+    T = np.maximum(T, 1e-6)
+    sd = iv * np.sqrt(T)
+    d1 = (np.log(np.maximum(S, 1e-9) / K) + 0.5 * sd * sd) / sd
+    d2 = d1 - sd
+    c = S * ndtr(d1) - K * ndtr(d2)
+    return np.where(cp > 0, c, c - S + K)
+
+
+def implied_delta(px, S, K, T, cp):
+    """|delta| from each trade's own price: IV by vectorised bisection (0.01–3.0), then Black-Scholes (r = 0)."""
+    lo, hi = np.full(len(px), 0.01), np.full(len(px), 3.0)
+    for _ in range(30):
+        mid = (lo + hi) / 2
+        v = _bs_px(S, K, T, mid, cp)
+        up = v > px
+        hi = np.where(up, mid, hi)
+        lo = np.where(up, lo, mid)
+    d, _ = _bs_d(S, K, T, (lo + hi) / 2, cp)
+    return np.abs(d)
+
+
+def xminutes(rec, mkt: str) -> pd.DataFrame:
+    """Like minutes() for ES / SPY options: per minute × row of the UNDERLYING price (ES 2 pt, SPY 0.2): buy / sell in
+    SPX-equivalent delta shares (delta × size × multiplier × underlying ÷ SPX), single-leg and all, plus und o/h/l/c.
+    Incremental on the store."""
+    from .timeutil import ET
+    cols = ["m", "row", "sl_buy", "sl_sell", "al_buy", "al_sell"]
+    df = rec.xprints_df(mkt) if hasattr(rec, "xprints_df") else pd.DataFrame()
+    key = f"_oflow_{mkt}"
+    with rec.lock:
+        st_ = getattr(rec, key, None)
+        if st_ is None or st_["n"] > len(df):
+            st_ = {"n": 0, "agg": None, "und": None}
+        n0 = st_["n"]
+    info = (getattr(rec, "xinfo", {}) or {}).get(mkt, {})
+    if len(df) > n0 and info:
+        new = df.iloc[n0:]
+        keep = new["valid"].values.astype(bool) & ~new["eth"].values.astype(bool) & np.isfinite(new["und"].values) \
+            & (new["aggr"].values != 0) & np.isfinite(new["aggr"].values) & (new["px"].values > 0)
+        new = new[keep]
+        if len(new):
+            ts = new["ts_ms"].values.astype("int64")
+            exp_end = pd.Timestamp(info["exp"] + " 16:00").tz_localize(ET).value // 10**6
+            T = np.maximum(exp_end - ts, 60_000) / (365.25 * 86400e3)
+            S = new["und"].values.astype(float); K = new["strike"].values.astype(float)
+            cp = new["cp"].values.astype(float)
+            dl = implied_delta(new["px"].values.astype(float), S, K, T, cp)
+            mult = 50.0 if mkt == "ES" else 100.0
+            s_now, _ = rec.spot_now()
+            scale = (S / s_now) if (s_now and np.isfinite(s_now)) else np.ones(len(S))
+            sd = np.sign(new["aggr"].values.astype(float)) * np.sign(cp) * dl * new["size"].values.astype(float) * mult * scale
+            sl = ~new["spread_leg"].values.astype(bool)
+            m = (ts // 60000) * 60000
+            r = XROW[mkt]
+            a = pd.DataFrame({"m": m, "row": np.floor(S / r) * r,
+                              "sl_buy": np.where(sl, np.clip(sd, 0, None), 0.0), "sl_sell": np.where(sl, np.clip(-sd, 0, None), 0.0),
+                              "al_buy": np.clip(sd, 0, None), "al_sell": np.clip(-sd, 0, None)})
+            agg = a if st_["agg"] is None else pd.concat([st_["agg"], a], ignore_index=True)
+            st_["agg"] = agg.groupby(["m", "row"], as_index=False, sort=True).sum()
+            u = pd.DataFrame({"m": m, "o": S, "h": S, "l": S, "c": S})
+            u = u.groupby("m").agg(o=("o", "first"), h=("h", "max"), l=("l", "min"), c=("c", "last")).reset_index()
+            if st_["und"] is not None:
+                u = pd.concat([st_["und"], u]).groupby("m").agg(o=("o", "first"), h=("h", "max"), l=("l", "min"),
+                                                                 c=("c", "last")).reset_index()
+            st_["und"] = u
+        st_ = dict(st_, n=len(df))
+        with rec.lock:
+            setattr(rec, key, st_)
+    agg = st_["agg"] if st_["agg"] is not None else pd.DataFrame(columns=cols)
+    und = st_["und"] if st_["und"] is not None else pd.DataFrame(columns=["m", "o", "h", "l", "c"])
+    return agg, und

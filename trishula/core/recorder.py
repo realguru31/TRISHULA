@@ -167,6 +167,11 @@ class Recorder:
             self.spx = (float("nan"), 0)
             self.spx_prev_close = float("nan")
             self._pbuf: list[dict] = []                         # new prints (dicts)
+            # v0.40.0 OrderFlow: ES-option + SPY-option prints (same-day expiry, ±4 %), separate compact store
+            self.xlegs: dict[str, tuple] = {}                    # sym → (mkt, exp, strike, cp, mult)
+            self._xbuf: dict[str, list] = {"ES": [], "SPY": []}
+            self._xchunks: dict[str, list] = {"ES": [], "SPY": []}
+            self.xinfo: dict[str, dict] = {}
             self._pchunks: list[pd.DataFrame] = []              # compacted prints
             self._pcache = (0, pd.DataFrame())
             self.c5: dict[tuple, tuple] = {}                     # (sym, ts_ms) -> (vol, bidv, askv) 5-min candles
@@ -336,6 +341,10 @@ class Recorder:
                                              extended_trading_hours=True)
             except Exception as e:                          # noqa: BLE001
                 self._err(e, "es-subscribe")
+            try:
+                await self._x_subscribe(s, sess, spot, today)
+            except Exception as e:                          # noqa: BLE001
+                self._err(e, "x-subscribe")
             self.state = f"recording 0DTE {e0:%m/%d} · 1DTE {e1:%m/%d} (seed) · {len(syms)} legs"
 
             tasks = [asyncio.create_task(c) for c in (
@@ -765,6 +774,105 @@ class Recorder:
           except Exception as e:                            # noqa: BLE001
             self._err(e, "candle-seed")
 
+    # ── v0.40.0 OrderFlow: ES + SPY options ───────────────────────────────────────────────────────────────────────────
+    XCOLS = ["ts_ms", "strike", "cp", "px", "size", "bid", "ask", "aggr", "spread_leg", "eth", "valid", "und", "replay"]
+
+    async def _x_subscribe(self, s, sess, spot, today):
+        """Same-day ES options (all roots expiring on the nearest date ≥ today) and SPY options (nearest expiry ≥ today),
+        strikes within ±4 % of SPX-scaled price; TimeAndSale replayed from 09:30 ET (capped at 1,000 / contract) then
+        live; underlying quotes (SPY, ES front month) for each print's underlying price."""
+        import datetime as _d
+        from tastytrade.dxfeed import Quote
+        from tastytrade.instruments import get_future_option_chain, get_option_chain
+        if not _ok(spot):
+            return
+        legs, info = {}, {}
+        spy = await get_option_chain(sess, "SPY")
+        se = min((d for d in spy if d >= today), default=None)
+        if se:
+            ref = spot / 10.0
+            for o in spy[se]:
+                k = float(o.strike_price)
+                if abs(k - ref) <= ref * 0.04:
+                    legs[o.streamer_symbol] = ("SPY", str(se), k, 1 if str(o.option_type.value).upper().startswith("C") else -1, 100.0)
+            info["SPY"] = {"exp": str(se), "und": "SPY", "n": sum(1 for v in legs.values() if v[0] == "SPY")}
+        es = await get_future_option_chain(sess, "ES")
+        ee = min((d for d in es if d >= today), default=None)
+        und_es = getattr(self, "es_sym", None)
+        if ee:
+            roots = set()
+            for o in es[ee]:
+                k = float(o.strike_price)
+                if abs(k - spot) <= spot * 0.045:
+                    legs[o.streamer_symbol] = ("ES", str(ee), k, 1 if str(o.option_type.value).upper().startswith("C") else -1,
+                                               float(getattr(o, "multiplier", 50) or 50))
+                    roots.add(o.option_root_symbol)
+            info["ES"] = {"exp": str(ee), "und": und_es, "roots": sorted(roots),
+                          "n": sum(1 for v in legs.values() if v[0] == "ES")}
+        if not legs:
+            return
+        with self.lock:
+            self.xlegs, self.xinfo = legs, info
+        unds = [u for u in ("SPY", und_es) if u]
+        await s.subscribe(Quote, unds)
+        frm = int(_d.datetime.combine(today, dtime(9, 30)).replace(tzinfo=now_et().tzinfo).timestamp() * 1000)
+        ch = s._channels["TimeAndSale"]
+        xs = list(legs)
+        for i in range(0, len(xs), 500):
+            await s._websocket.send_json({"type": "FEED_SUBSCRIPTION", "channel": ch, "add": [
+                {"type": "TimeAndSale", "symbol": x, "fromTime": frm} for x in xs[i:i + 500]]})
+
+    def _x_und(self, mkt: str):
+        u = "SPY" if mkt == "SPY" else getattr(self, "es_sym", None)
+        q = self.quotes.get(u) if u else None
+        return (q[0] + q[1]) / 2 if q and _ok(q[0]) and _ok(q[1]) else float("nan")
+
+    def _x_on(self, e, xm):
+        if int(e.event_flags or 0) & 0x02:
+            return
+        mkt, exp, k, cp, mult = xm
+        key = hash((e.event_symbol, int(e.index or 0), str(e.type)))
+        if key in self._seen:
+            return
+        ms = int(e.time or e.event_time or time.time() * 1000)
+        p, b, a = _f(e.price), _f(e.bid_price), _f(e.ask_price)
+        side = str(e.aggressor_side or "").split(".")[-1].upper()
+        ag = aggr(bucket(p, b, a), p, b, a, 1.0, side)
+        replay = ms < self._connect_ms - 5000
+        und = self._x_und(mkt)
+        if replay or not _ok(und):                       # replayed: SPX 1-min close × today's live und / SPX ratio
+            c = self._candle_spot(ms)
+            u_now, s_now = self._x_und(mkt), self.spot_now()[0]
+            und = c * (u_now / s_now) if (_ok(c) and _ok(u_now) and _ok(s_now)) else float("nan")
+        row = (ms, k, cp, p, int(e.size or 0), b, a, ag, bool(e.spread_leg), bool(e.extended_trading_hours),
+               bool(e.valid_tick) if e.valid_tick is not None else True, und, replay)
+        with self.lock:
+            self._seen.add(key)
+            buf = self._xbuf[mkt]
+            buf.append(row)
+            if len(buf) >= 20_000:
+                self._x_compact(mkt)
+
+    def _x_compact(self, mkt):
+        buf = self._xbuf[mkt]
+        if not buf:
+            return
+        df = pd.DataFrame(buf, columns=self.XCOLS)
+        for c in ("strike", "px", "bid", "ask", "und"):
+            df[c] = df[c].astype("float32")
+        df["cp"] = df["cp"].astype("int8"); df["aggr"] = df["aggr"].astype("float32")
+        df["size"] = df["size"].astype("int32")
+        self._xchunks[mkt].append(df)
+        self._xbuf[mkt] = []
+
+    def xprints_df(self, mkt: str) -> pd.DataFrame:
+        with self.lock:
+            self._x_compact(mkt)
+            ch = self._xchunks[mkt]
+            if len(ch) > 1:
+                ch[:] = [pd.concat(ch, ignore_index=True)]
+            return ch[0] if ch else pd.DataFrame(columns=self.XCOLS)
+
     def _candle_spot(self, ms: int) -> float:
         """SPX close of the 1-minute bar containing ms (replayed prints)."""
         c = self.candles.get(ms - ms % 60_000)
@@ -811,6 +919,9 @@ class Recorder:
             sym = e.event_symbol
             meta = self.legs.get(sym)
             if meta is None:
+                xm = self.xlegs.get(sym)
+                if xm is not None:
+                    self._x_on(e, xm)
                 continue
             flags = int(e.event_flags or 0)
             if flags & 0x02:                    # REMOVE_EVENT marker: no trade

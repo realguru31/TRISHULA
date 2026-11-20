@@ -62,7 +62,9 @@ def day_zip(rec) -> bytes:
     parts = {"prints.parquet": lambda: rec.prints_df(), "chain_snapshots.parquet": lambda: rec.chain_df(),
              "spot.parquet": lambda: rec.spot_df(), "es1m.parquet": lambda: rec.es_df(),
              "candles5.parquet": lambda: rec.candles5_df(), "spx1m.parquet": lambda: rec.candles_df(),
-             "opt1m_backfill.parquet": lambda: rec.opt1m_df(),          # L22: the ridges' pre-restart source
+             "opt1m_backfill.parquet": lambda: rec.opt1m_df(),
+             "x_es_prints.parquet": lambda: (rec.xprints_df("ES") if hasattr(rec, "xprints_df") else None),   # v0.40.0
+             "x_spy_prints.parquet": lambda: (rec.xprints_df("SPY") if hasattr(rec, "xprints_df") else None),          # L22: the ridges' pre-restart source
              "book.parquet": lambda: (rec.book_frame() if hasattr(rec, "book_frame") else None),  # v0.32.1:
              # long-dated book (all subscribed expiries beyond 0/1DTE: sym, exp, strike, cp, type, iv, gamma, oi,
              # volume) as at the send — OI is fixed for the day, so Terrain's book layer can be rebuilt offline

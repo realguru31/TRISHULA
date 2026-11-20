@@ -3,6 +3,16 @@
 Semantic versioning: MAJOR.MINOR.PATCH. The running version is shown in the app's
 status bar, every tab footer, and the Recorder diagnostics panel.
 
+## v0.40.0 — 2026-11-20 · OrderFlow: ES options + SPY options (SPX / ES / SPY / 3 stacked)
+- Recorder also streams the nearest-expiry ES options (strikes ±4.5 % of ES) and SPY options (±4 % of SPY): every
+  print (trade replay from 09:30 on connect), with aggressor side, spread-leg flag and the underlying price at the print.
+- OrderFlow tab: market toggle SPX / ES / SPY / 3 stacked. Same candles / footprint views, same single-leg / all toggle,
+  RTH only. ES and SPY are drawn on their own price (ES 2-pt rows, SPY 0.2-pt rows, candles from the underlying).
+- Delta for ES / SPY prints from each trade's own price (implied vol → Black-Scholes); size in SPX-equivalent delta
+  (delta × size × multiplier × underlying ÷ SPX) so the three charts are on one scale.
+- ES feed carries no spread-leg flag (checked 20 Nov): single-leg = all for ES, said in the ES caption.
+- Day zip adds x_es_prints.parquet and x_spy_prints.parquet.
+
 ## v0.39.0 — 2026-11-20 · VS3D → OrderFlow tab (options delta map / footprint)
 - New sub-tab next to Lean. Every 0DTE print → customer delta (aggressor × option delta × size × 100) placed at the SPX
   price where it traded; per minute × 2-pt rows, incremental on the print store (core/orderflow.py).
