@@ -3,6 +3,22 @@
 Semantic versioning: MAJOR.MINOR.PATCH. The running version is shown in the app's
 status bar, every tab footer, and the Recorder diagnostics panel.
 
+## v0.41.0 — 2026-11-20 · OrderFlow: unusual options (4 toggles + table), SPX / ES / SPY
+- Toggles (each on its own, or together; nothing changes when all are off):
+  1 big prints — single-leg print ≥ the market's own rolling size percentile (top 1 / 0.5 / 0.1 / 0.03 / 0.01 % of the
+    last 15 / 30 / 60 / 120 min or the whole day) and ≥ 3 / 5 / 10 × the median print — adaptive, no fixed N.
+  2 bursts — a strike trading > 2 / 3 / 5 / 10 / 20 × its own rolling 15 / 30 / 60-min median minute (and above the
+    market's typical busy strike-minute).
+  3 paying up — at-or-through (or through-only) the quote, with its own adaptive size cut.
+  4 new positions — a contract's volume today reaching 1 / 1.5 / 2 × its prior-close OI (OI ≥ 50 / 100 / 500 / 1,000).
+- Marks on the candles (and footprint) at the underlying price and time: blue = bullish (calls bought / puts sold),
+  magenta = bearish; size = contracts; shape per flag, star = 2+ flags. Hover: contract, size, price, side, premium.
+- Table: time, strike, C/P, size, price, bought/sold, read, premium $, vs spot, flags hit; top 20 / 50 / 100 by
+  premium / size / time; any flag or 2+ flags; click a row → yellow ring on the chart.
+- Recorder: ES / SPY prints keep their contract symbol; open interest subscribed for the ES / SPY strikes (needs restart).
+- 18 Nov SPX counts at the defaults: big 981 / bursts 2,834 / paying up 794 / new 109 per day; at top 0.01 % and 20×:
+  104 / 243 / 78.
+
 ## v0.40.0 — 2026-11-20 · OrderFlow: ES options + SPY options (SPX / ES / SPY / 3 stacked)
 - Recorder also streams the nearest-expiry ES options (strikes ±4.5 % of ES) and SPY options (±4 % of SPY): every
   print (trade replay from 09:30 on connect), with aggressor side, spread-leg flag and the underlying price at the print.

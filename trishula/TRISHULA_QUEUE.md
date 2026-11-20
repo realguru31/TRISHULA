@@ -5,6 +5,7 @@ Rules unchanged: whole zip every time (delete trishula/ → unzip → commit →
 secrets only in Streamlit · one repo, no GitHub tokens · Colab scripts outside the repo, both tokens prefilled.
 
 ## QUEUED (low priority, not approved): recorder `_initial_spot` stamps SPX with RECEIPT time — on (re)connect outside hours Friday's close counts as live SPX for 60 s (seen 16 Nov 05:10: spot 7,561.67 "spx" vs ~7,531 synth). Fix: stamp with the trade's own time (as `_l_trade` does). Needs reboot.
+## ✅ BUILT v0.41.0 (APPROVE 20 Nov 14:44 ET, push after the close): OrderFlow unusual options — big prints / bursts / paying up / new positions toggles + table; nightly scoring of each flag on the day zips (reversal X before Y against), tune walk-forward
 ## ✅ BUILT v0.40.0 (APPROVE 20 Nov 15:25 ET, push after the close): OrderFlow ES + SPY options (SPX / ES / SPY / 3 stacked)
 ## ✅ BUILT v0.39.0 (APPROVE 20 Nov 04:45 ET, pushed premarket): VS3D OrderFlow tab — delta map (default) / footprint
 ## ✅ BUILT v0.38.0 (APPROVE 18 Nov 12:02 ET, pushed after the close): AG-REV "AG tilt" ridges view

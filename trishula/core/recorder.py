@@ -775,14 +775,14 @@ class Recorder:
             self._err(e, "candle-seed")
 
     # ── v0.40.0 OrderFlow: ES + SPY options ───────────────────────────────────────────────────────────────────────────
-    XCOLS = ["ts_ms", "strike", "cp", "px", "size", "bid", "ask", "aggr", "spread_leg", "eth", "valid", "und", "replay"]
+    XCOLS = ["ts_ms", "sym", "strike", "cp", "px", "size", "bid", "ask", "aggr", "spread_leg", "eth", "valid", "und", "replay"]
 
     async def _x_subscribe(self, s, sess, spot, today):
         """Same-day ES options (all roots expiring on the nearest date ≥ today) and SPY options (nearest expiry ≥ today),
         strikes within ±4 % of SPX-scaled price; TimeAndSale replayed from 09:30 ET (capped at 1,000 / contract) then
         live; underlying quotes (SPY, ES front month) for each print's underlying price."""
         import datetime as _d
-        from tastytrade.dxfeed import Quote
+        from tastytrade.dxfeed import Quote, Summary
         from tastytrade.instruments import get_future_option_chain, get_option_chain
         if not _ok(spot):
             return
@@ -818,6 +818,8 @@ class Recorder:
         frm = int(_d.datetime.combine(today, dtime(9, 30)).replace(tzinfo=now_et().tzinfo).timestamp() * 1000)
         ch = s._channels["TimeAndSale"]
         xs = list(legs)
+        for i in range(0, len(xs), 500):                  # v0.41.0: open interest per contract (unusual · new positions)
+            await s.subscribe(Summary, xs[i:i + 500])
         for i in range(0, len(xs), 500):
             await s._websocket.send_json({"type": "FEED_SUBSCRIPTION", "channel": ch, "add": [
                 {"type": "TimeAndSale", "symbol": x, "fromTime": frm} for x in xs[i:i + 500]]})
@@ -844,7 +846,7 @@ class Recorder:
             c = self._candle_spot(ms)
             u_now, s_now = self._x_und(mkt), self.spot_now()[0]
             und = c * (u_now / s_now) if (_ok(c) and _ok(u_now) and _ok(s_now)) else float("nan")
-        row = (ms, k, cp, p, int(e.size or 0), b, a, ag, bool(e.spread_leg), bool(e.extended_trading_hours),
+        row = (ms, e.event_symbol, k, cp, p, int(e.size or 0), b, a, ag, bool(e.spread_leg), bool(e.extended_trading_hours),
                bool(e.valid_tick) if e.valid_tick is not None else True, und, replay)
         with self.lock:
             self._seen.add(key)
@@ -861,7 +863,7 @@ class Recorder:
         for c in ("strike", "px", "bid", "ask", "und"):
             df[c] = df[c].astype("float32")
         df["cp"] = df["cp"].astype("int8"); df["aggr"] = df["aggr"].astype("float32")
-        df["size"] = df["size"].astype("int32")
+        df["size"] = df["size"].astype("int32"); df["sym"] = df["sym"].astype("category")
         self._xchunks[mkt].append(df)
         self._xbuf[mkt] = []
 

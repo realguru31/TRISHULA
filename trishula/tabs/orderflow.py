@@ -10,6 +10,7 @@ from plotly.subplots import make_subplots
 
 from core import lean as LN
 from core import orderflow as OF
+from core import unusual as UN
 from core.timeutil import ET, now_et
 
 BG = "#0e1117"
@@ -143,6 +144,123 @@ def footprint(a, b, legs, bar="15min", last=None, row=OF.ROW, name="SPX"):
     return f
 
 
+
+# ── v0.41.0 unusual options marks ────────────────────────────────────────────────────────────────────────────────────
+UNU = {"big prints": "big", "bursts": "burst", "paying up": "pay", "new positions": "new"}
+SHAPE = {"big": "circle", "burst": "diamond", "pay": "triangle-up", "new": "square", "multi": "star"}
+LBL = {"big": "big print", "burst": "burst", "pay": "paying up", "new": "new position", "multi": "2+ flags"}
+
+
+def _t(ms):
+    return pd.to_datetime(pd.Series(ms, dtype="int64"), unit="ms", utc=True).dt.tz_convert(ET).dt.tz_localize(None)
+
+
+def _fp_x(t, a, bar, last):
+    """footprint x (bar index + position inside the bar) for times t; NaN outside the shown bars."""
+    bars = sorted(a.assign(col=a["t"].dt.floor(bar))["col"].unique())
+    if last:
+        bars = bars[-last:]
+    bi = {x: i for i, x in enumerate(bars)}
+    fl = t.dt.floor(bar)
+    i = fl.map(bi).astype(float)
+    frac = (t - fl) / pd.Timedelta(bar)
+    return (i - 0.43 + 0.86 * frac).values
+
+
+def add_marks(fig, g, bursts, on, view, a, last=None, sel=None, rowcol=None):
+    """Unusual marks on the candles (or footprint) at the underlying price and time; size by contracts."""
+    if g is None or not len(g):
+        return
+    kw = rowcol or {}
+    pts = g[g[on].any(axis=1)] if on else g.iloc[:0]
+    smax = float(max(pts["size"].max() if len(pts) else 1, bursts["v"].max() if len(bursts) else 1))
+
+    def xy(ms, S):
+        t = _t(ms)
+        return (t.values if view == "candles" else _fp_x(t, a, "15min", last)), np.asarray(S, float)
+
+    def sz(v):
+        return 7 + 24 * np.sqrt(np.asarray(v, float) / smax)
+    nf = pts[on].sum(1) if len(pts) else pd.Series(dtype=float)
+    groups = [("multi", pts[nf >= 2])] + [(k, pts[(nf == 1) & pts[k]]) for k in on if k != "burst"]
+    for k, d in groups:
+        if not len(d):
+            continue
+        x, y = xy(d["ts_ms"].values, d["S"].values)
+        bull = (d["new_bull"] if k == "new" and "new_bull" in d else d["bull"]).values
+        cd = np.stack([[f"{v:g}" for v in d["strike"]], np.where(d["cp"] > 0, "C", "P"), [f"{v:,.0f}" for v in d["size"]],
+                       [f"{v:.2f}" for v in d["px"]], np.where(d["aggr"] > 0, "bought", "sold"),
+                       [f"{v / 1e3:,.0f}" for v in d["prem"]]], axis=1)
+        fig.add_scatter(x=x, y=y, mode="markers", name=LBL[k], customdata=cd, showlegend=False,
+                        marker=dict(symbol=SHAPE[k], size=sz(d["size"].values), color=np.where(bull > 0, BLUE, MAG),
+                                    line=dict(color="white", width=0.8), opacity=0.9),
+                        hovertemplate=f"{LBL[k]} · %{{customdata[0]}}%{{customdata[1]}} · %{{customdata[2]}} @ "
+                                      "%{customdata[3]} %{customdata[4]} · $%{customdata[5]}k<extra></extra>", **kw)
+    if "burst" in on and len(bursts):
+        x, y = xy(bursts["ts_ms"].values, bursts["S"].values)
+        cd = np.stack([[f"{v:g}" for v in bursts["k"]], [f"{v:,.0f}" for v in bursts["v"]],
+                       [f"{v:.1f}" for v in bursts["v"] / bursts["med"].clip(lower=1)]], axis=1)
+        fig.add_scatter(x=x, y=y, mode="markers", name="burst", customdata=cd, showlegend=False,
+                        marker=dict(symbol="diamond", size=sz(bursts["v"].values), color=np.where(bursts["b"] > 0, BLUE, MAG),
+                                    line=dict(color="white", width=0.6), opacity=0.75),
+                        hovertemplate="burst · %{customdata[0]} · %{customdata[1]} contracts this minute · "
+                                      "%{customdata[2]}× its median<extra></extra>", **kw)
+    if sel is not None:
+        x, y = xy(np.array([sel[0]]), np.array([sel[1]]))
+        fig.add_scatter(x=x, y=y, mode="markers", showlegend=False, hoverinfo="skip",
+                        marker=dict(symbol="circle-open", size=38, color="#ffd600", line=dict(width=3)), **kw)
+
+
+def unusual_controls():
+    """Toggles 1–4 + the settings of each switched-on flag (shown only when on) + table settings."""
+    pick = st.pills("unusual", list(UNU), selection_mode="multi", key="of_unu", label_visibility="collapsed") or []
+    on = [UNU[x] for x in pick]
+    p = dict(UN.DEF)
+    if not on:
+        return on, p, None
+    W = [15, 30, 60, 120, "day"]
+    if "big" in on:
+        c = st.columns([1.2, 2, 3, 2])
+        c[0].markdown("**big prints**")
+        p["big_pct"] = c[1].segmented_control("big cut", [99.0, 99.5, 99.9, 99.97, 99.99], default=99.9, key="of_big_pct",
+                                              format_func=lambda v: f"top {round(100 - v, 2):g} %") or 99.9
+        p["big_win"] = c[2].segmented_control("big lookback", W, default=60, key="of_big_win",
+                                              format_func=lambda v: "full day" if v == "day" else f"{v} min") or 60
+        p["big_floor"] = c[3].segmented_control("big floor", [3.0, 5.0, 10.0], default=5.0, key="of_big_floor",
+                                                format_func=lambda v: f"≥ {v:g}× median") or 5.0
+    if "burst" in on:
+        c = st.columns([1.2, 2, 3, 2])
+        c[0].markdown("**bursts**")
+        p["burst_k"] = c[1].segmented_control("burst k", [2.0, 3.0, 5.0, 10.0, 20.0], default=3.0, key="of_burst_k",
+                                              format_func=lambda v: f"{v:g}×") or 3.0
+        p["burst_win"] = c[2].segmented_control("burst median", [15, 30, 60], default=30, key="of_burst_win",
+                                                format_func=lambda v: f"median {v} min") or 30
+    if "pay" in on:
+        c = st.columns([1.2, 2, 3, 2])
+        c[0].markdown("**paying up**")
+        p["pay_mode"] = c[1].segmented_control("pay mode", ["at or through", "through only"], default="at or through",
+                                               key="of_pay_mode") or "at or through"
+        p["pay_pct"] = c[2].segmented_control("pay cut", [99.0, 99.5, 99.9, 99.97, 99.99], default=99.9, key="of_pay_pct",
+                                              format_func=lambda v: f"size top {round(100 - v, 2):g} %") or 99.9
+        p["pay_win"] = c[3].segmented_control("pay lookback", W, default=60, key="of_pay_win",
+                                              format_func=lambda v: "day" if v == "day" else f"{v}m") or 60
+    if "new" in on:
+        c = st.columns([1.2, 2, 3, 2])
+        c[0].markdown("**new positions**")
+        p["new_ratio"] = c[1].segmented_control("new ratio", [1.0, 1.5, 2.0], default=1.0, key="of_new_ratio",
+                                                format_func=lambda v: f"volume ≥ {v:g}× OI") or 1.0
+        p["new_min_oi"] = c[2].segmented_control("new min oi", [50, 100, 500, 1000], default=100, key="of_new_min_oi",
+                                                 format_func=lambda v: f"OI ≥ {v:,}") or 100
+    c = st.columns([1.2, 2, 3, 2])
+    c[0].markdown("**table**")
+    tb = dict(n=c[1].segmented_control("rows", [20, 50, 100], default=20, key="of_tab_n",
+                                       format_func=lambda v: f"top {v}") or 20,
+              sort=c[2].segmented_control("sort", ["premium", "size", "time"], default="premium", key="of_tab_sort",
+                                          format_func=lambda v: f"by {v}") or "premium",
+              min_flags=c[3].segmented_control("min flags", [1, 2], default=1, key="of_tab_min",
+                                               format_func=lambda v: "any flag" if v == 1 else "2+ flags") or 1)
+    return on, p, tb
+
 def render(rec):
     rec = getattr(rec, "_rec", rec)
     st.caption("OrderFlow — options delta at the SPX price where it traded (OFL Delta Map idea with options delta): "
@@ -164,6 +282,15 @@ def render(rec):
         st.info("waiting for the chain")
         return
     last = 12 if span == "last 3h" else None
+    on, prm, tb = unusual_controls()
+    day = pd.Timestamp(now_et().date())
+    sel = None
+    tsel = (st.session_state.get("of_tab") or {}).get("selection", {}).get("rows", []) if on else []
+    prev = st.session_state.get("_of_tab_rows")
+    if tsel and prev is not None and tsel[0] < len(prev):
+        r = prev.iloc[tsel[0]]
+        sel = (r["mkt"], int(r["_ts"]), float(r["_S"]))
+    tabs = []
     for m in (["SPX", "ES", "SPY"] if mkt == "3 stacked" else [mkt]):
         if m == "SPX":
             a, b = _frame(rec, str(exps[0]), legs)
@@ -176,9 +303,37 @@ def render(rec):
         if a is None or not len(a) or len(b) < 2:
             st.info(f"{m}: waiting for RTH prints and bars (09:30 ET)")
             continue
+        g = bu = None
+        cnt = ""
+        if on:
+            try:
+                fx = UN.frame(rec, m, str(exps[0]) if m == "SPX" else (getattr(rec, "xinfo", {}) or {}).get(m, {}).get("exp", ""))
+                g, bu = UN.detect(fx, m, day, legs, on, prm)
+                if len(g):
+                    tabs.append(UN.table(g, on, m, tb["n"], tb["sort"], tb["min_flags"]))
+                    cnt = " · unusual: " + " · ".join(
+                        f"{LBL[k]} {(len(bu) if k == 'burst' else int(g[k].sum())):,}" for k in on)
+            except Exception as e:                       # noqa: BLE001
+                st.caption(f"unusual: {type(e).__name__}: {e}")
         st.caption(f"{lbl} · {len(a):,} minute × row cells · bought {a['buy'].sum() / 1e6:,.2f}M Δ · "
-                   f"sold {a['sell'].sum() / 1e6:,.2f}M Δ · net {(a['buy'].sum() - a['sell'].sum()) / 1e6:+,.2f}M")
+                   f"sold {a['sell'].sum() / 1e6:,.2f}M Δ · net {(a['buy'].sum() - a['sell'].sum()) / 1e6:+,.2f}M{cnt}")
         h = 560 if mkt == "3 stacked" else 820
         fig = delta_map(a, b, legs, row=row, name=m, height=h) if view == "candles" else \
             footprint(a, b, legs, last=last, row=row, name=m)
+        if on and g is not None:
+            add_marks(fig, g, bu, on, view, a, last=last, sel=sel[1:] if sel and sel[0] == m else None,
+                      rowcol=dict(row=1, col=1) if view == "candles" else None)
         st.plotly_chart(fig, width="stretch", key=f"of_{view}_{m}")
+    if on:
+        t = pd.concat([x for x in tabs if len(x)], ignore_index=True) if any(len(x) for x in tabs) else pd.DataFrame()
+        if len(t):
+            if len(tabs) > 1:
+                t = t.sort_values({"premium": "premium $", "size": "size", "time": "_ts"}[tb["sort"]],
+                                  ascending=False).head(tb["n"]).reset_index(drop=True)
+            st.session_state["_of_tab_rows"] = t
+            st.dataframe(t.drop(columns=["_ts", "_S"]), hide_index=True, width="stretch", key="of_tab",
+                         on_select="rerun", selection_mode="single-row",
+                         column_config={"premium $": st.column_config.NumberColumn(format="$%d"),
+                                        "strike": st.column_config.NumberColumn(format="%.0f")})
+        else:
+            st.caption("no unusual trades for the switched-on flags yet")
