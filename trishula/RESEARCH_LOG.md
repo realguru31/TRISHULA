@@ -209,3 +209,14 @@ H1 (opening single-leg 0DTE lean 09:30–09:45 → 09:45→close), forward days 
 Data note: 16 Nov chain snapshots / spot rows start 12:20 ET (recorder memory lost ~12:20; status: rss peak 2.3 GB,
    54 memory thins). Prints (TAS replay), SPX 1m and lean minutes cover the full day. Terrain at 10:00 / 12:00 for 16 Nov
    can only be approximated (prints + OI); 14:00 and 15:30 are complete.
+
+
+## §17 · 0DTE edge model — prior-close VIX vs Yahoo VIX open (23 Nov 2026)
+Yahoo daily via the Yahoo MCP (SPX + VIX since 1989). Yahoo's daily VIX "open" = the 03:15 ET overnight value (20 Nov:
+28.63 at 03:00, 29.69 at 09:30); no 09:30 VIX history is available anywhere we can reach (Yahoo 30-min ≈ 60 days,
+tastytrade intraday is shallow). Scale fit as edge_model (_fit_scale, 12-y half-life, refit every 63 days, earlier
+days only), moves open→low / open→high, strikes at the in-sample 95/99/99.5 % standardized move. 2,486 test days 2017→.
+Put misses at the 5 / 1 / 0.5 % strike — prior close 3.94 / 0.88 / 0.48 · VIX open 4.71 / 1.05 / 0.64 · higher 4.55 / 1.05 / 0.60.
+VIX open ≥10 % above prior close (79 d): prior close 8.86 % misses at the 5 % put strike vs VIX open 3.80 / higher 6.33.
+VIX open ≥10 % below prior close (15 d, like 23 Nov): put misses at 1 % — prior close 0 · VIX open 6.67 (1 day) · higher 0.
+Calls: no material difference. Built as a toggle (SPX BB v0.48.0); default stays prior close.

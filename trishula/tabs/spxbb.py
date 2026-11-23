@@ -78,7 +78,9 @@ def _run_model(trk: BB.Tracker):
         ycl = float(hy["Close"].iloc[-1])
         op = _today_open(trk)
         anchor, kind = (op, "today open") if op else (spot, "premarket spot")
-        run = EM.run_model(toggle="0DTE", spot=anchor, history=h, now_et=now, spot_source=kind)
+        vm = {"prior close": "close", "VIX open": "open", "higher of two": "max"}[
+            st.session_state.get("bb_vixmode") or "prior close"]
+        run = EM.run_model(toggle="0DTE", spot=anchor, history=h, now_et=now, spot_source=kind, vix_mode=vm)
         run_y = EM.run_model(toggle="1DTE", spot=ycl, history=hy, now_et=now, spot_source="yesterday close")
     else:
         run = EM.run_model(toggle=mode, spot=spot, now_et=now, spot_source=src)
@@ -246,7 +248,14 @@ def _side_box(side, m, best):
 
 def _model_block(trk: BB.Tracker):
     st.markdown("**Edge model** — expected loss of far-OTM strikes (runs only when you press the button)")
-    b1, b2 = st.columns([1, 6])
+    b1, b3, b2 = st.columns([1, 2.2, 4.8])
+    if st.session_state.get("bb_mode", trk.cfg["mode"]) == "0DTE":     # v0.48.0: which VIX the 0DTE fit uses
+        b3.segmented_control("VIX", ["prior close", "VIX open", "higher of two"], default="prior close",
+                             key="bb_vixmode", label_visibility="collapsed",
+                             help="prior close = as before · VIX open = today's Yahoo VIX open (03:15 ET overnight value, "
+                                  "fixed for the day; history fitted the same way) · higher of two = the cautious one. "
+                                  "Backtest 2017→: VIX open fixes the misses when VIX jumps overnight, but moves puts closer "
+                                  "when VIX falls overnight.")
     if b1.button("▶ Run model", key="bb_run"):
         with st.spinner("running edge model (downloading SPX / VIX history from Yahoo, fitting)…"):
             try:
@@ -263,7 +272,8 @@ def _model_block(trk: BB.Tracker):
     i = m["run"].info
     cur = st.session_state.get("bb_mode", trk.cfg["mode"])
     b2.caption(f"last run {i['run_at_et']} ET · **{i['toggle']}** · {dt.date.fromisoformat(m['exp']):%a %d %b} · "
-               f"spot {float(m['spot']):,.2f} ({m.get('src') or '?'}) · VIX {i['vix']:.2f} ({i['vix_date']})")
+               f"spot {float(m['spot']):,.2f} ({m.get('src') or '?'}) · VIX {i['vix']:.2f} ({i['vix_date']})"
+               + (f" · prior close {i['vix_close']:.2f}" if i.get("vix_mode", "close") != "close" else ""))
     if cur != m["mode"]:
         st.warning(f"These results were run for **{m['mode']}** — the toggle is now on {cur}. "
                    "Press Run model to refresh.")

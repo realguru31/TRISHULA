@@ -65,6 +65,9 @@ def load_history() -> pd.DataFrame:
             d.columns = d.columns.droplevel(1)
     out = spx[["Open", "High", "Low", "Close"]].copy()
     out["vix"] = vix["Close"].reindex(out.index)
+    out["vix_open"] = vix["Open"].reindex(out.index)        # v0.48.0: Yahoo's VIX open (03:15 ET overnight value)
+    if len(vix) and vix.index[-1] > out.index[-1]:            # premarket: VIX already has today's bar, SPX not yet
+        out.attrs["vix_open_today"] = (str(vix.index[-1].date()), float(vix["Open"].iloc[-1]))
     return out
 
 
@@ -225,7 +228,8 @@ class ModelRun:
 
 # ── entry point ────────────────────────────────────────────────────────────────
 def run_model(toggle: str = "0DTE", spot: float | None = None, history: pd.DataFrame | None = None,
-              now_et: dt.datetime | None = None, fees_open: float = FEES_OPEN, spot_source: str = "") -> ModelRun:
+              now_et: dt.datetime | None = None, fees_open: float = FEES_OPEN, spot_source: str = "",
+              vix_mode: str = "close") -> ModelRun:
     """Fit the model now and return a ModelRun.
 
     toggle   "0DTE" = today's expiry sold around the open; "1DTE" = next expiry sold around the close.
@@ -233,6 +237,9 @@ def run_model(toggle: str = "0DTE", spot: float | None = None, history: pd.DataF
              the closing spot for 1DTE.
     history  optional DataFrame [Open, High, Low, Close, vix] indexed by date; downloaded if omitted.
     now_et   optional naive US/Eastern datetime (defaults to the current ET time).
+    vix_mode 0DTE only (v0.48.0): "close" = prior session's closing VIX (default, as before) · "open" = that day's
+             Yahoo VIX open (the 03:15 ET overnight value; history fitted the same way) · "max" = the higher of the two.
+             Falls back to "close" when today's VIX open is not out yet.
     """
     if toggle not in ("0DTE", "1DTE"):
         raise ValueError("toggle must be '0DTE' or '1DTE'")
@@ -252,6 +259,22 @@ def run_model(toggle: str = "0DTE", spot: float | None = None, history: pd.DataF
     # Is the newest bar today's unfinished session?
     partial = h.index[-1].date() == now.date() and now.time() < dt.time(16, 15)
     at_open = toggle == "0DTE"
+    h["log_vix_close"] = h["log_vix"]
+    vix_used = "close"
+    if at_open and vix_mode in ("open", "max") and "vix_open" in h:
+        lo_next = np.log(h["vix_open"]).shift(-1)          # row t ↔ day t+1's VIX open (the day the move happens)
+        today = (h.attrs or {}).get("vix_open_today")
+        if not partial and today and today[0] == str(now.date()):
+            lo_next.iloc[-1] = np.log(today[1])
+        ref_i = -2 if partial else -1
+        if np.isfinite(lo_next.iloc[ref_i]):
+            L = lo_next if vix_mode == "open" else np.maximum(lo_next, h["log_vix"])
+            ma = log_vix.rolling(22, min_periods=10).mean()
+            rr = np.log(np.sqrt(range_var.rolling(5).mean() * 252) * 100)
+            h["log_vix"] = L
+            h["vix_ma22"] = (L - ma).replace([np.inf, -np.inf], np.nan)
+            h["range5"] = (rr - L).replace([np.inf, -np.inf], np.nan)
+            vix_used = vix_mode
     if at_open:      # risk from the open to that day's low / high; inputs = the prior session's close
         put_move = 1.0 - h["Low"].shift(-1) / h["Open"].shift(-1)
         call_move = h["High"].shift(-1) / h["Open"].shift(-1) - 1.0
@@ -276,7 +299,7 @@ def run_model(toggle: str = "0DTE", spot: float | None = None, history: pd.DataF
 
     # SAFEST / 2nd SAFEST, same rule as the edge scripts: biggest close -> next-session moves since 1990
     # among days with VIX <= today's VIX rounded up, applied to the last close (0DTE) or the spot (1DTE).
-    bucket = int(np.ceil(float(np.exp(ref_row["log_vix"]))))
+    bucket = int(np.ceil(float(np.exp(ref_row["log_vix_close"]))))
     cl = h[h.index >= CLOSE_HISTORY_FROM]
     fall = cl["Low"].shift(-1) / cl["Close"] - 1.0
     rise = cl["High"].shift(-1) / cl["Close"] - 1.0
@@ -299,7 +322,10 @@ def run_model(toggle: str = "0DTE", spot: float | None = None, history: pd.DataF
         "spot": float(spot),
         "spot_source": spot_source,
         "vix": float(np.exp(ref_row["log_vix"])),
-        "vix_date": str(ref_row.name.date()),
+        "vix_date": (str(ref_row.name.date()) if vix_used == "close" else
+                     f"{'open' if vix_used == 'open' else 'higher of open / close'} {now.date()}"),
+        "vix_mode": vix_used,
+        "vix_close": float(np.exp(ref_row["log_vix_close"])),
         "vix_bucket": bucket,
         "safest_measured_from": base,
         "history_to": str(h.index[-1].date()),

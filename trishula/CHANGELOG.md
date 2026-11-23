@@ -3,6 +3,16 @@
 Semantic versioning: MAJOR.MINOR.PATCH. The running version is shown in the app's
 status bar, every tab footer, and the Recorder diagnostics panel.
 
+## SPX BB v0.48.0 — 2026-11-23 · 0DTE model: VIX toggle (prior close / VIX open / higher of two)
+- Next to Run model (0DTE only): which VIX the 0DTE fit uses. prior close = as before (default). VIX open = that
+  day's Yahoo VIX open (the 03:15 ET overnight value, fixed for the day), history fitted on the same input. higher of
+  two = the cautious one. Before today's VIX open exists it falls back to prior close and says so.
+- Run line shows the VIX used and, when not prior close, the prior close next to it. SAFEST / 2nd SAFEST unchanged
+  (still bucketed on the closing VIX). 1DTE unchanged.
+- Backtest 2017→ (RESEARCH_LOG §17): no real difference on average; when VIX jumps ≥10 % overnight the prior-close
+  fit is too tight (8.9 % misses at its 5 % put strike) and VIX open fixes it (3.8 %); when VIX falls ≥10 % overnight
+  (15 days) VIX open moves puts closer (1 miss at its 1 % strike vs 0). Higher of two sits between.
+
 ## v0.41.0 — 2026-11-20 · OrderFlow: unusual options (4 toggles + table), SPX / ES / SPY
 - ORDERS, not prints: prints on the same contract, same side, same second = one order (a 500-lot fills as 50–70
   prints). Size that matters = delta notional (|Δ| × contracts × multiplier × underlying, Δ from the order's price).
