@@ -3,6 +3,14 @@
 Semantic versioning: MAJOR.MINOR.PATCH. The running version is shown in the app's
 status bar, every tab footer, and the Recorder diagnostics panel.
 
+## SPX BB v0.48.1 — 2026-11-23 · Run model fits all three VIX versions; toggle only switches the display
+- One press of Run model (0DTE) fits prior close, VIX open and higher of two together; the VIX toggle switches curves,
+  tables, best ratio, SAFEST and the run line instantly — no rerun.
+- SAFEST / 2nd SAFEST follow the toggle: prior close = days with closing VIX ≤ today's close rounded up (as before);
+  VIX open = days whose VIX open was ≤ today's exact open; higher of two = days judged by the higher of the two, cut
+  at today's exact higher value. 23 Nov: puts 6300 / 6315 → 6315 / 6425 on VIX open.
+- Before today's VIX open exists (03:15 ET) the VIX open / higher choices show prior close with a warning.
+
 ## SPX BB v0.48.0 — 2026-11-23 · 0DTE model: VIX toggle (prior close / VIX open / higher of two)
 - Next to Run model (0DTE only): which VIX the 0DTE fit uses. prior close = as before (default). VIX open = that
   day's Yahoo VIX open (the 03:15 ET overnight value, fixed for the day), history fitted on the same input. higher of

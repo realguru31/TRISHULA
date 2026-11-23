@@ -261,6 +261,7 @@ def run_model(toggle: str = "0DTE", spot: float | None = None, history: pd.DataF
     at_open = toggle == "0DTE"
     h["log_vix_close"] = h["log_vix"]
     vix_used = "close"
+    h["vix_cut_series"] = h["vix"]                         # SAFEST filter: which VIX each history day is judged by
     if at_open and vix_mode in ("open", "max") and "vix_open" in h:
         lo_next = np.log(h["vix_open"]).shift(-1)          # row t ↔ day t+1's VIX open (the day the move happens)
         today = (h.attrs or {}).get("vix_open_today")
@@ -274,6 +275,7 @@ def run_model(toggle: str = "0DTE", spot: float | None = None, history: pd.DataF
             h["log_vix"] = L
             h["vix_ma22"] = (L - ma).replace([np.inf, -np.inf], np.nan)
             h["range5"] = (rr - L).replace([np.inf, -np.inf], np.nan)
+            h["vix_cut_series"] = np.exp(L)                # v0.48.1: SAFEST follows the toggle (next day's VIX open / higher)
             vix_used = vix_mode
     if at_open:      # risk from the open to that day's low / high; inputs = the prior session's close
         put_move = 1.0 - h["Low"].shift(-1) / h["Open"].shift(-1)
@@ -299,13 +301,16 @@ def run_model(toggle: str = "0DTE", spot: float | None = None, history: pd.DataF
 
     # SAFEST / 2nd SAFEST, same rule as the edge scripts: biggest close -> next-session moves since 1990
     # among days with VIX <= today's VIX rounded up, applied to the last close (0DTE) or the spot (1DTE).
-    bucket = int(np.ceil(float(np.exp(ref_row["log_vix_close"]))))
+    if vix_used == "close":
+        bucket = int(np.ceil(float(np.exp(ref_row["log_vix_close"]))))     # as before: closing VIX rounded up
+    else:                                                  # v0.48.1: exact VIX used today (open / higher of two)
+        bucket = round(float(np.exp(ref_row["log_vix"])), 2)
     cl = h[h.index >= CLOSE_HISTORY_FROM]
     fall = cl["Low"].shift(-1) / cl["Close"] - 1.0
     rise = cl["High"].shift(-1) / cl["Close"] - 1.0
     if partial:
         fall.iloc[-2] = rise.iloc[-2] = np.nan
-    calm = cl["vix"] <= bucket
+    calm = cl["vix_cut_series"] <= bucket
     base = float(ref_row["Close"]) if at_open else float(spot)
     safest = {
         "put": [{"name": nm, "strike": int((base * (1 + r)) // 5) * 5, "move_pct": r * 100.0, "date": str(d.date())}
@@ -327,6 +332,7 @@ def run_model(toggle: str = "0DTE", spot: float | None = None, history: pd.DataF
         "vix_mode": vix_used,
         "vix_close": float(np.exp(ref_row["log_vix_close"])),
         "vix_bucket": bucket,
+        "vix_cut_kind": {"close": "VIX close", "open": "VIX open", "max": "higher of VIX open / close"}[vix_used],
         "safest_measured_from": base,
         "history_to": str(h.index[-1].date()),
         "measure": measure,

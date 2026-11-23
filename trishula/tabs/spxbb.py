@@ -78,15 +78,30 @@ def _run_model(trk: BB.Tracker):
         ycl = float(hy["Close"].iloc[-1])
         op = _today_open(trk)
         anchor, kind = (op, "today open") if op else (spot, "premarket spot")
-        vm = {"prior close": "close", "VIX open": "open", "higher of two": "max"}[
-            st.session_state.get("bb_vixmode") or "prior close"]
-        run = EM.run_model(toggle="0DTE", spot=anchor, history=h, now_et=now, spot_source=kind, vix_mode=vm)
+        runs = {}                                       # v0.48.1: one press fits all three VIX versions
+        for vm in ("close", "open", "max"):
+            r_ = EM.run_model(toggle="0DTE", spot=anchor, history=h, now_et=now, spot_source=kind, vix_mode=vm)
+            runs[vm] = r_ if r_.info.get("vix_mode", "close") == vm else None   # None = today's VIX open not out yet
         run_y = EM.run_model(toggle="1DTE", spot=ycl, history=hy, now_et=now, spot_source="yesterday close")
     else:
-        run = EM.run_model(toggle=mode, spot=spot, now_et=now, spot_source=src)
-    st.session_state["bb_model"] = dict(run=run, run_y=run_y, ycl=ycl, kind=kind, mode=mode, exp=exp, spot=spot,
-                                        anchor=float(run.spot),
-                                        src=src, win={"put": run.display_window("put"), "call": run.display_window("call")})
+        runs = {"close": EM.run_model(toggle=mode, spot=spot, now_et=now, spot_source=src)}
+    run = runs["close"]
+    st.session_state["bb_model"] = dict(run=run, runs=runs, run_y=run_y, ycl=ycl, kind=kind, mode=mode, exp=exp,
+                                        spot=spot, anchor=float(run.spot), src=src,
+                                        win={"put": run.display_window("put"), "call": run.display_window("call")})
+
+
+VIXSEL = {"prior close": "close", "VIX open": "open", "higher of two": "max"}
+
+
+def _view(m0: dict) -> dict:
+    """v0.48.1: the run the VIX toggle points at (no refit). Falls back to prior close when it isn't available."""
+    runs = m0.get("runs") or {}
+    want = VIXSEL.get(st.session_state.get("bb_vixmode") or "prior close", "close")
+    r = runs.get(want)
+    if want == "close" or r is None or m0.get("mode") != "0DTE":
+        return dict(m0, vix_na=(want != "close" and r is None and m0.get("mode") == "0DTE"))
+    return dict(m0, run=r, win={"put": r.display_window("put"), "call": r.display_window("call")}, vix_na=False)
 
 
 def _today_open(trk: BB.Tracker):
@@ -111,10 +126,16 @@ def _reanchor_open(trk: BB.Tracker, m0: dict) -> dict:
     op = _today_open(trk)
     if not op:
         return m0
-    r = copy.copy(m0["run"])
-    r.spot = op
-    r.info = dict(r.info, spot=op, spot_source="today open")
-    m1 = dict(m0, run=r, anchor=op, kind="today open",
+    def move(x):
+        if x is None:
+            return None
+        y = copy.copy(x)
+        y.spot = op
+        y.info = dict(y.info, spot=op, spot_source="today open")
+        return y
+    runs = {k: move(v) for k, v in (m0.get("runs") or {}).items()}
+    r = move(m0["run"])
+    m1 = dict(m0, run=r, runs=runs or None, anchor=op, kind="today open",
               win={"put": r.display_window("put"), "call": r.display_window("call")})
     st.session_state["bb_model"] = m1
     return m1
@@ -252,8 +273,10 @@ def _model_block(trk: BB.Tracker):
     if st.session_state.get("bb_mode", trk.cfg["mode"]) == "0DTE":     # v0.48.0: which VIX the 0DTE fit uses
         b3.segmented_control("VIX", ["prior close", "VIX open", "higher of two"], default="prior close",
                              key="bb_vixmode", label_visibility="collapsed",
-                             help="prior close = as before · VIX open = today's Yahoo VIX open (03:15 ET overnight value, "
-                                  "fixed for the day; history fitted the same way) · higher of two = the cautious one. "
+                             help="Run model fits all three at once; this only switches the display. prior close = as before · "
+                                  "VIX open = today's Yahoo VIX open (03:15 ET overnight value, fixed for the day; history "
+                                  "fitted the same way; SAFEST from days with VIX open ≤ today's) · higher of two = the "
+                                  "cautious one. "
                                   "Backtest 2017→: VIX open fixes the misses when VIX jumps overnight, but moves puts closer "
                                   "when VIX falls overnight.")
     if b1.button("▶ Run model", key="bb_run"):
@@ -269,7 +292,7 @@ def _model_block(trk: BB.Tracker):
     if m.get("error"):
         b2.error(f"model run failed — {m['error']}")
         return
-    i = m["run"].info
+    i = _view(m)["run"].info
     cur = st.session_state.get("bb_mode", trk.cfg["mode"])
     b2.caption(f"last run {i['run_at_et']} ET · **{i['toggle']}** · {dt.date.fromisoformat(m['exp']):%a %d %b} · "
                f"spot {float(m['spot']):,.2f} ({m.get('src') or '?'}) · VIX {i['vix']:.2f} ({i['vix_date']})"
@@ -286,14 +309,16 @@ def _model_live(trk: BB.Tracker):
     m0 = st.session_state.get("bb_model")
     if not m0 or m0.get("error"):
         return
-    m0 = _reanchor_open(trk, m0)
+    m0 = _view(_reanchor_open(trk, m0))
+    if m0.get("vix_na"):
+        st.warning("VIX open not out yet (it prints from 03:15 ET) — showing prior close. Press Run model after 03:15.")
     m = _price_live(trk, m0)
     i = m["run"].info
     anc = (f"solid = {m.get('kind')} {i['spot']:,.2f}" + (f" · dotted = yesterday close {m['ycl']:,.2f}"
                                                           if m.get("run_y") is not None else ""))
     st.caption(f"{anc} · run {i['run_at_et'][11:16]} ET · bids live "
                f"{m['priced_at']:%H:%M:%S} ET", help="Press Run model again if SPX has moved a lot. SAFEST = strike just "
-               f"beyond the biggest one-session move since 1990 on days with VIX ≤ {i.get('vix_bucket', '?')}, measured "
+               f"beyond the biggest one-session move since 1990 on days with {i.get('vix_cut_kind', 'VIX')} ≤ {i.get('vix_bucket', '?')}, measured "
                f"from {i.get('safest_measured_from', float('nan')):,.2f} — has not happened in that history, not cannot "
                "happen.")
     t = m["table"]
