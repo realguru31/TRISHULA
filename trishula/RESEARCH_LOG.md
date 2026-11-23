@@ -220,3 +220,6 @@ Put misses at the 5 / 1 / 0.5 % strike — prior close 3.94 / 0.88 / 0.48 · VIX
 VIX open ≥10 % above prior close (79 d): prior close 8.86 % misses at the 5 % put strike vs VIX open 3.80 / higher 6.33.
 VIX open ≥10 % below prior close (15 d, like 23 Nov): put misses at 1 % — prior close 0 · VIX open 6.67 (1 day) · higher 0.
 Calls: no material difference. Built as a toggle (SPX BB v0.48.0); default stays prior close.
+Addendum (23 Nov 07:57): "pick whichever VIX is higher today, use that version's forecast" — put misses at 5 / 1 / 0.5 %:
+4.26 / 0.93 / 0.44 (all days 2017→); VIX up ≥10 % overnight 3.80 at 5 %; VIX down ≥10 % overnight 0 at 1 %. Best of the
+four; replaced the fitted-max version in SPX BB v0.48.2.

@@ -3,6 +3,14 @@
 Semantic versioning: MAJOR.MINOR.PATCH. The running version is shown in the app's
 status bar, every tab footer, and the Recorder diagnostics panel.
 
+## SPX BB v0.48.2 — 2026-11-23 · "higher of two" fixed
+- "higher of two" no longer runs its own model fitted on max(open, close) history (it showed a third set of curves and
+  SAFEST). It now shows whichever of the two runs uses the higher VIX TODAY, whole: curves, tables, SAFEST. 23 Nov:
+  close 35.89 > open 31.38 → identical to prior close (SAFEST 6300 / 6315). Run line says which one it picked.
+- Backtest 2017→ (put misses at 5 / 1 / 0.5 %): pick-higher 4.26 / 0.93 / 0.44 vs prior close 3.94 / 0.88 / 0.48,
+  VIX open 4.71 / 1.05 / 0.64, old fitted-max 4.55 / 1.05 / 0.60; VIX-up ≥10 % days 3.80 (prior close 8.86);
+  VIX-down ≥10 % days 0 at 1 % (= prior close). One fewer fit per press.
+
 ## SPX BB v0.48.1 — 2026-11-23 · Run model fits all three VIX versions; toggle only switches the display
 - One press of Run model (0DTE) fits prior close, VIX open and higher of two together; the VIX toggle switches curves,
   tables, best ratio, SAFEST and the run line instantly — no rerun.

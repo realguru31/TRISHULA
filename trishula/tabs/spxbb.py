@@ -78,10 +78,15 @@ def _run_model(trk: BB.Tracker):
         ycl = float(hy["Close"].iloc[-1])
         op = _today_open(trk)
         anchor, kind = (op, "today open") if op else (spot, "premarket spot")
-        runs = {}                                       # v0.48.1: one press fits all three VIX versions
-        for vm in ("close", "open", "max"):
+        runs = {}                                       # v0.48.1: one press fits both VIX versions
+        for vm in ("close", "open"):
             r_ = EM.run_model(toggle="0DTE", spot=anchor, history=h, now_et=now, spot_source=kind, vix_mode=vm)
             runs[vm] = r_ if r_.info.get("vix_mode", "close") == vm else None   # None = today's VIX open not out yet
+        # v0.48.2: higher of two = whichever of the two runs uses the higher VIX TODAY (shown whole, no own fit)
+        if runs["open"] is not None:
+            runs["max"] = runs["open"] if runs["open"].info["vix"] > runs["close"].info["vix"] else runs["close"]
+        else:
+            runs["max"] = None
         run_y = EM.run_model(toggle="1DTE", spot=ycl, history=hy, now_et=now, spot_source="yesterday close")
     else:
         runs = {"close": EM.run_model(toggle=mode, spot=spot, now_et=now, spot_source=src)}
@@ -99,9 +104,13 @@ def _view(m0: dict) -> dict:
     runs = m0.get("runs") or {}
     want = VIXSEL.get(st.session_state.get("bb_vixmode") or "prior close", "close")
     r = runs.get(want)
+    if want == "max" and r is not None and r is runs.get("close"):
+        return dict(m0, run=r, win=m0["win"], vix_na=False, pick="prior close")
     if want == "close" or r is None or m0.get("mode") != "0DTE":
         return dict(m0, vix_na=(want != "close" and r is None and m0.get("mode") == "0DTE"))
-    return dict(m0, run=r, win={"put": r.display_window("put"), "call": r.display_window("call")}, vix_na=False)
+    pick = ("VIX open" if r is runs.get("open") else "prior close") if want == "max" else None
+    return dict(m0, run=r, win={"put": r.display_window("put"), "call": r.display_window("call")}, vix_na=False,
+                pick=pick)
 
 
 def _today_open(trk: BB.Tracker):
@@ -276,7 +285,7 @@ def _model_block(trk: BB.Tracker):
                              help="Run model fits all three at once; this only switches the display. prior close = as before · "
                                   "VIX open = today's Yahoo VIX open (03:15 ET overnight value, fixed for the day; history "
                                   "fitted the same way; SAFEST from days with VIX open ≤ today's) · higher of two = the "
-                                  "cautious one. "
+                                  "cautious one: shows whichever of the two uses the higher VIX today. "
                                   "Backtest 2017→: VIX open fixes the misses when VIX jumps overnight, but moves puts closer "
                                   "when VIX falls overnight.")
     if b1.button("▶ Run model", key="bb_run"):
@@ -292,11 +301,13 @@ def _model_block(trk: BB.Tracker):
     if m.get("error"):
         b2.error(f"model run failed — {m['error']}")
         return
-    i = _view(m)["run"].info
+    v_ = _view(m)
+    i = v_["run"].info
     cur = st.session_state.get("bb_mode", trk.cfg["mode"])
     b2.caption(f"last run {i['run_at_et']} ET · **{i['toggle']}** · {dt.date.fromisoformat(m['exp']):%a %d %b} · "
                f"spot {float(m['spot']):,.2f} ({m.get('src') or '?'}) · VIX {i['vix']:.2f} ({i['vix_date']})"
-               + (f" · prior close {i['vix_close']:.2f}" if i.get("vix_mode", "close") != "close" else ""))
+               + (f" · prior close {i['vix_close']:.2f}" if i.get("vix_mode", "close") != "close" else "")
+               + (f" · higher of two → **{v_['pick']}**" if v_.get("pick") else ""))
     if cur != m["mode"]:
         st.warning(f"These results were run for **{m['mode']}** — the toggle is now on {cur}. "
                    "Press Run model to refresh.")
