@@ -26,6 +26,47 @@ def _fig(title, h=360):
     return f
 
 
+
+def _disconnect_fig(t, wv, sd, win=30):
+    """v0.48.3: width ÷ straddle (how many straddles out the 0.05 bids sit) and its z-score vs its own rolling 30 min.
+    z ≫ 0 = wings rich vs ATM (edges lagging a falling straddle) · z ≪ 0 = ATM rich vs wings. Lag = the shift (0–15 min)
+    where 1-min changes of width and straddle line up best today."""
+    if sd is None or len(sd) < win // 2 or not len(wv.dropna()):
+        return None, ""
+    w = pd.DataFrame({"t": t, "w": wv}).dropna()
+    s = sd[["t", "strad"]].dropna()
+    s = s[s["strad"] > 0]
+    m = pd.merge_asof(s.sort_values("t"), w.sort_values("t"), on="t", direction="backward").dropna()
+    m = m[m["w"] > 0]
+    if len(m) < win // 2:
+        return None, ""
+    m["r"] = m["w"] / m["strad"]
+    roll = m["r"].rolling(win, min_periods=10)
+    m["z"] = (m["r"] - roll.mean()) / roll.std().replace(0, np.nan)
+    lag_txt = ""
+    dw, ds = np.log(m["w"]).diff(), np.log(m["strad"]).diff()
+    best = None
+    for L in range(0, 16):                               # width at t+L vs straddle at t
+        c = dw.shift(-L).corr(ds)
+        if c == c and (best is None or c > best[1]):
+            best = (L, c)
+    if best and best[1] > 0.05:
+        lag_txt = f" · width lags straddle ≈ {best[0]} min today (corr {best[1]:.2f})"
+    f = _fig(f"Disconnect — width ÷ straddle z-score (rolling {win} min){lag_txt}", h=230)
+    z = m["z"]
+    f.add_bar(x=m["t"], y=z, marker_color=np.where(z > 2, "#e040fb", np.where(z < -2, "#2f8bff", "#5c6370")),
+              customdata=np.stack([m["r"], m["w"], m["strad"]], axis=1), name="z",
+              hovertemplate="z %{y:+.2f} · %{customdata[0]:.1f} straddles out · width %{customdata[1]:.0f} pts · "
+                            "straddle $%{customdata[2]:.2f}<extra></extra>")
+    for y_, c_ in ((2, "#e040fb"), (-2, "#2f8bff")):
+        f.add_hline(y=y_, line=dict(color=c_, dash="dot", width=1))
+    f.add_annotation(x=0.01, y=1.0, xref="paper", yref="paper", showarrow=False, xanchor="left", yanchor="top",
+                     text="magenta z > 2: wings rich vs ATM (edges lagging) · blue z < −2: ATM rich vs wings",
+                     font=dict(size=10, color="#8b949e"))
+    f.update_layout(margin=dict(l=52, r=8, t=36, b=8), bargap=0)
+    return f, lag_txt
+
+
 CHART_H = 470          # v0.46.0: compact — whole page fits at 80 % browser zoom
 REFRESH = {"5 s": 5, "10 s": 10, "30 s": 30, "60 s": 60, "⏸ pause": None}   # v0.40.0: screen only
 
@@ -564,6 +605,8 @@ def _live(trk: BB.Tracker):
     if cache and cache[0] == sig:
         with left:
             st.plotly_chart(cache[1], width="stretch", key="bb_w")
+            if len(cache) > 3 and cache[3] is not None:
+                st.plotly_chart(cache[3], width="stretch", key="bb_z")
         with right:
             st.plotly_chart(cache[2], width="stretch", key="bb_e")
         return
@@ -633,6 +676,14 @@ def _live(trk: BB.Tracker):
                                             tickprefix="$", tickfont=dict(color="#f5c542")))
         st.plotly_chart(f, width="stretch", key="bb_w")
         fw = f
+        try:
+            fz, _ = _disconnect_fig(t, wv, sd if len(sd) else None)
+        except Exception:                            # noqa: BLE001
+            fz = None
+        if fz is not None:
+            st.plotly_chart(fz, width="stretch", key="bb_z")
+        else:
+            st.caption("disconnect z-score: needs ~15 min of straddle + width readings")
     # ── right: furthest 0.05-bid strikes, bands spot → edge ────────────────────────
     with right:
         f = _fig("Furthest 0.05-bid strikes — call (blue) vs put (magenta)", h=CHART_H)
@@ -652,4 +703,4 @@ def _live(trk: BB.Tracker):
         if sput:
             f.add_hline(y=sput, line=dict(color="#ffffff", dash="dot", width=1.2), annotation_text=f"sold {sput:.0f}P")
         st.plotly_chart(f, width="stretch", key="bb_e")
-    st.session_state["_bb_figs"] = (sig, fw, f)
+    st.session_state["_bb_figs"] = (sig, fw, f, fz)

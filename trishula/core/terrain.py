@@ -31,7 +31,7 @@ from scipy.stats import norm  # noqa: E402
 
 GBT_UNSEEDED_W = 0.2
 DARK = "#0d1117"; TXT = "#c9d1d9"; GRID = "#222a35"; WHITE = "#e6edf3"
-UP = "#ffffff"; DOWN = "#ff8c00"
+UP = "#2f8cff"; DOWN = "#ffd400"           # v0.41.1: blue up · yellow down (was white / orange)
 GHEAVY = "Gamma |Γ| (heaviness)"; GDECAY = "Gamma Decay (color)"
 GREEKS = ["Delta Change", "Gamma", "Charm", GHEAVY, GDECAY]
 WEIGHTS = ["OI + Volume", "OI (opening book)", "Volume (today's flow)", "Vol else OI (legacy)"]

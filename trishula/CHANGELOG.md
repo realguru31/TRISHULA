@@ -3,6 +3,14 @@
 Semantic versioning: MAJOR.MINOR.PATCH. The running version is shown in the app's
 status bar, every tab footer, and the Recorder diagnostics panel.
 
+## SPX BB v0.48.3 — 2026-11-23 · Disconnect pane under the width / straddle chart
+- width ÷ straddle (how many straddles out the 0.05 bids sit), z-score vs its own rolling 30 min, bars with ±2 lines:
+  magenta z > 2 = wings rich vs ATM (edges lagging a falling straddle) · blue z < −2 = ATM rich vs wings.
+- Title shows today's lag: the shift (0–15 min) where 1-min changes of width and straddle line up best
+  (20 Nov ≈ 2 min, 23 Nov ≈ 1 min, both corr 0.19 — the edges move in steps more than they lag).
+
+## v0.41.1 — 2026-11-23 · Terrain candles blue up / yellow down (were white / orange)
+
 ## SPX BB v0.48.2 — 2026-11-23 · "higher of two" fixed
 - "higher of two" no longer runs its own model fitted on max(open, close) history (it showed a third set of curves and
   SAFEST). It now shows whichever of the two runs uses the higher VIX TODAY, whole: curves, tables, SAFEST. 23 Nov:
