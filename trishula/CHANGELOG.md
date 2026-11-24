@@ -3,6 +3,8 @@
 Semantic versioning: MAJOR.MINOR.PATCH. The running version is shown in the app's
 status bar, every tab footer, and the Recorder diagnostics panel.
 
+## v0.42.7 — 2026-11-24 · TASTIER tab back (v0.42.5 removal undone)
+
 ## v0.42.6 — 2026-11-24 · data copy built on disk, part by part
 - The day zip is written to a temp file one part at a time (parquet in 200k-row slices), uploaded straight from the
   file, then deleted; memory over the soft limit → thin first. Measured on 24 Nov 14:00 data (1.30M prints, 119k
