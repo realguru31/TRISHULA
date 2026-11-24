@@ -4,8 +4,8 @@ Semantic versioning: MAJOR.MINOR.PATCH. The running version is shown in the app'
 status bar, every tab footer, and the Recorder diagnostics panel.
 
 ## v0.42.4 — 2026-11-24 · Terrain candles: no black shade on blue
-- Blue (up) candles kept the black edge + thick black halo made for the old white candles. Now: blue edge and NO
-  dark halo on blue candles (body or wick); yellow (down) candles keep their thin dark-grey halo. Only the candle outline changed.
+- Blue (up) candles kept the black edge + thick black halo made for the old white candles. Now: no outline or
+  halo on any candle — blue and yellow, body edge in its own colour. Only the candle outline changed.
 
 ## v0.42.3 — 2026-11-24 · Terrain and charm panels aligned
 - Cause: the terrain figure has a profile column on the right, the charm figure did not, and both were saved with a
