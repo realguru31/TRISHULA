@@ -3,6 +3,12 @@
 Semantic versioning: MAJOR.MINOR.PATCH. The running version is shown in the app's
 status bar, every tab footer, and the Recorder diagnostics panel.
 
+## v0.42.3 — 2026-11-24 · Terrain and charm panels aligned
+- Cause: the terrain figure has a profile column on the right, the charm figure did not, and both were saved with a
+  tight crop (different margins) → different plot widths, so times did not line up.
+- Both now use the same fixed plot box (same left / right margins, same right column — left empty on charm) and are
+  saved without the tight crop: 09:30, "now" and 16:00 sit at the same x in both (GTH or RTH view).
+
 ## v0.42.2 — 2026-11-24 · OrderFlow opens on the "zero" write-up's settings
 - Defaults on a fresh load: single-leg · drop mid · drop crosses · unusual = bursts (in a hurry — our proxy for
   sweeps) + paying up (paid up) + new positions (on purpose / opening) · fade / follow ON with "session flow agrees".

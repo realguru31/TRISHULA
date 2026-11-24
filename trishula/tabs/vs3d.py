@@ -285,7 +285,7 @@ def build_terrain(rec, exps, ts_ms, ctl, canonical=False):
         notes.append(f"long-dated book: {len(exps_f) - len(exps)} expiries in the field · weight {_bookw:.2f} · "
                      f"recorder {_bs.get('state', '—')} ({_bs.get('legs', 0)} legs)")
     LD.stage("rendering terrain", 0.85)
-    res = ([B.fig_png(f) for f in figs], notes)
+    res = ([B.fig_png(f, tight=False) for f in figs], notes)    # v0.42.3: no tight crop → terrain + charm stay aligned
     while len(cache) >= 8:
         cache.pop(next(iter(cache)))
     cache[key] = res

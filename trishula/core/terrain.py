@@ -490,6 +490,9 @@ def frozen_sig(o: dict) -> str:
     return repr(sorted((k, o.get(k)) for k in FROZEN_KEYS))
 
 
+LAYOUT = dict(left=0.045, right=0.955, top=0.93, bottom=0.08)   # v0.42.3: fixed box, both figures
+
+
 def terrain_figures(ch, spot, exps, now, day, bars, o, cap_state, peak_pts=(), frozen=None, backfill=None):
     """Build the main terrain figure (+ stacked charm figure).
     o = options dict (greek, weighting, norm, pct, intensity, power, alpha, sat, contours, pockets,
@@ -593,7 +596,7 @@ def terrain_figures(ch, spot, exps, now, day, bars, o, cap_state, peak_pts=(), f
     _vmin = (0.0 if t_greek == GHEAVY else -1.0)
     x0, x1 = session_window(day)
     fig = plt.figure(figsize=(16.5, 7.6), dpi=80, facecolor=DARK)
-    gs = fig.add_gridspec(1, 2, width_ratios=[24, 2.2], wspace=0.015)
+    gs = fig.add_gridspec(1, 2, width_ratios=[24, 2.2], wspace=0.015, **LAYOUT)   # v0.42.3: same box as charm
     ax = fig.add_subplot(gs[0, 0]); axp = fig.add_subplot(gs[0, 1], sharey=ax)
     ax.set_facecolor(DARK); axp.set_facecolor(DARK)
     ax.imshow(plotV, origin="lower", extent=[x0, x1, pg[0], pg[-1]], aspect="auto", cmap=cmap,
@@ -728,7 +731,9 @@ def terrain_figures(ch, spot, exps, now, day, bars, o, cap_state, peak_pts=(), f
                     fpg, zc, vc = fz[j]
                     Zc[:, j] = np.interp(pg, fpg, zc); Vc[:, j] = np.interp(pg, fpg, vc)
             fc = plt.figure(figsize=(16.5, 4.4), dpi=80, facecolor=DARK)
-            axc = fc.add_subplot(111); axc.set_facecolor(DARK)
+            gsc = fc.add_gridspec(1, 2, width_ratios=[24, 2.2], wspace=0.015, **LAYOUT)  # v0.42.3: aligned with the
+            axc = fc.add_subplot(gsc[0, 0]); axc.set_facecolor(DARK)                    # terrain above (same columns)
+            axcp = fc.add_subplot(gsc[0, 1], sharey=axc); axcp.set_facecolor(DARK)
             axc.imshow(-Vc, origin="lower", extent=[x0, x1, pg[0], pg[-1]], aspect="auto",
                        cmap=charm_cmap(), vmin=-1, vmax=1, interpolation="bilinear", zorder=0, alpha=o["alpha"])
             if o["contours"]:
@@ -775,6 +780,7 @@ def terrain_figures(ch, spot, exps, now, day, bars, o, cap_state, peak_pts=(), f
                     _c5 += f" · HPT spot {np.interp(spot, pg, _cc):+,.0f}/5min"
             except Exception:
                 pass
+            axcp.axis("off")                              # empty — only keeps the plot box the same width as above
             axc.set_title(f"CHARM{' ·sim5m' if o['simc'] else ''} · {t_wt} · {_sgmode} · " + (f"Dan ±{c_cap:,.0f} minis/5min" if dan else f"cap {cap_state.get(ck, 0):,.0f}")
                           + (f" · flip {_cflip:.0f}" if _cflip else "") + _c5 + "   "
                           "[gold = dealers must SELL as time passes · blue = must BUY]", color=TXT, fontsize=10.5, loc="left")

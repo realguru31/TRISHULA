@@ -933,8 +933,8 @@ def book_spot_overlay(fig, bars, x0, x1, resize=False):
     return fig
 
 
-def fig_png(fig) -> bytes:
+def fig_png(fig, tight: bool = True) -> bytes:
     buf = io.BytesIO()
-    fig.savefig(buf, format="png", dpi=110, facecolor=fig.get_facecolor(), bbox_inches="tight")
+    fig.savefig(buf, format="png", dpi=110, facecolor=fig.get_facecolor(), bbox_inches="tight" if tight else None)
     plt.close(fig)
     return buf.getvalue()
