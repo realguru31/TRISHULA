@@ -3,6 +3,11 @@
 Semantic versioning: MAJOR.MINOR.PATCH. The running version is shown in the app's
 status bar, every tab footer, and the Recorder diagnostics panel.
 
+## v0.42.2 — 2026-11-24 · OrderFlow opens on the "zero" write-up's settings
+- Defaults on a fresh load: single-leg · drop mid · drop crosses · unusual = bursts (in a hurry — our proxy for
+  sweeps) + paying up (paid up) + new positions (on purpose / opening) · fade / follow ON with "session flow agrees".
+- These are the article's rules, not tuned on our data (10 saved days is too few) — tune once ~20 days are in.
+
 ## v0.42.1 — 2026-11-24 · OrderFlow: rest of the "zero" write-up
 - fade / follow filter: "session flow agrees" (default) = only events where the day's money since 09:30 points the
   same way as the trade (zero's SES driver; 5–23 Nov follow 61 % right, +4.4 pts, 1.8/day) · or "all events".

@@ -218,7 +218,10 @@ def add_marks(fig, g, bursts, on, view, a, last=None, sel=None, rowcol=None):
 
 def unusual_controls():
     """Toggles 1–4 + the settings of each switched-on flag (shown only when on) + table settings."""
-    pick = st.pills("unusual", list(UNU), selection_mode="multi", key="of_unu", label_visibility="collapsed") or []
+    pick = st.pills("unusual", list(UNU), selection_mode="multi", key="of_unu", label_visibility="collapsed",
+                    default=["bursts", "paying up", "new positions"],      # v0.42.2: the write-up's "paid up, in a
+                    help="defaults follow the 'zero' write-up: paid up (paying up), in a hurry (bursts — our proxy for "
+                         "sweeps, which our feed cannot see), on purpose / opening (new positions)") or []
     on = [UNU[x] for x in pick]
     p = dict(UN.DEF)
     if not on:
@@ -370,11 +373,11 @@ def render(rec):
                                 label_visibility="collapsed") or "candles"
     legs = c2.segmented_control("prints", ["single-leg", "all"], default="single-leg", key="of_legs",
                                 label_visibility="collapsed") or "single-leg"
-    mid = c5.segmented_control("mid prints", ["keep mid", "drop mid"], default="keep mid", key="of_mid",
+    mid = c5.segmented_control("mid prints", ["keep mid", "drop mid"], default="drop mid", key="of_mid",
                                label_visibility="collapsed",
-                               help="drop mid = ignore prints traded inside the bid/ask (two sides meeting halfway); applies "
+                               help="default drop mid (as the 'zero' write-up). drop mid = ignore prints traded inside the bid/ask (two sides meeting halfway); applies "
                                     "to the map, footprint and unusual options") or "keep mid"
-    drop_mid = mid == "drop mid"
+    drop_mid = mid != "keep mid"
     span = c4.segmented_control("footprint span", ["last 3h", "full day"], default="last 3h", key="of_span",
                                 label_visibility="collapsed", help="footprint only: 15-min bars; the full day squeezes the "
                                                                   "numbers") or "last 3h"
@@ -396,7 +399,7 @@ def render(rec):
         sel = (r["mkt"], int(r["_ts"]), float(r["_S"]))
     tabs = []
     xt = None
-    if st.toggle("fade / follow at highs & lows", key="of_xt", value=False,
+    if st.toggle("fade / follow at highs & lows", key="of_xt", value=True,
                  help="v0.42.0 (from the 'zero' write-up): at each new session high / low after 10:00, did the last 15 min "
                       "of single-leg 0DTE money lean AGAINST it (→ fade) or push THROUGH it (→ follow)? Scored on the last "
                       "15 finished events of each kind from the saved days + today, SPX 30 min later. Neither working → "
