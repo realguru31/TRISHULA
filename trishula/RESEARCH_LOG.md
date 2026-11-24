@@ -223,3 +223,14 @@ Calls: no material difference. Built as a toggle (SPX BB v0.48.0); default stays
 Addendum (23 Nov 07:57): "pick whichever VIX is higher today, use that version's forecast" — put misses at 5 / 1 / 0.5 %:
 4.26 / 0.93 / 0.44 (all days 2017→); VIX up ≥10 % overnight 3.80 at 5 %; VIX down ≥10 % overnight 0 at 1 %. Best of the
 four; replaced the fitted-max version in SPX BB v0.48.2.
+
+## §18 · 24 Nov — "zero" write-up checks on ALL saved days (12, 16, 18, 20*, 23** Nov; *20 Nov afternoon only after a
+restart, **23 Nov to 14:00). RTH, 0DTE SPX prints from the GitHub day zips. Mid prints = 34–43 % of prints.
+A) 5-min net options delta vs SPX: same-bar corr all prints +0.35 · single-leg +0.43 · single-leg without mid prints
+   +0.44 · calls only +0.35 · puts only +0.44. Next bar ≈ 0 in every version (−0.05…+0.02).
+   → single-leg helps; dropping mid prints adds nothing; SPX puts are NOT a worse read than calls here.
+B) Biggest single-leg orders (one contract + side + second merged, top 1 % by delta $ per day), SPX 30 min later in
+   their direction: at/through quote 50 % right, inside the spread 51 %. Splits (AM bought calls 68 %, 3/4 days; PM
+   bearish flow right 5/5 days) follow the days' drift — 4 of 5 days sold off — so they can't be read as skill.
+   AM bought calls going right against a falling tape is the one thing to keep counting (matches the write-up).
+C) Straddle bought on a disconnect at real bid/ask: not testable yet — SPX BB keeps the straddle MID only, 2 days.
