@@ -309,8 +309,7 @@ def render(rec):
         if on:
             try:
                 xe = str(exps[0]) if m == "SPX" else (getattr(rec, "xinfo", {}) or {}).get(m, {}).get("exp", "")
-                fx = UN.frame(rec, m, str(exps[0]))
-                g, bu = UN.detect(fx, m, day, legs, on, prm, exp=xe)
+                g, bu = UN.result(rec, m, str(exps[0]), day, legs, on, prm, x_exp=xe)
                 if len(g):
                     tabs.append(UN.table(g, on, m, tb["n"], tb["sort"], tb["min_flags"]))
                     cnt = " · unusual: " + " · ".join(

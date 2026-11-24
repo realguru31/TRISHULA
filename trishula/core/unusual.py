@@ -69,22 +69,41 @@ def _x_frame(rec, mkt: str) -> pd.DataFrame:
 
 
 def frame(rec, mkt: str, exp: str) -> pd.DataFrame:
-    """All of today's prints for the market (whole session, sorted), cached on the store size."""
-    n = len(rec._all_prints()) if mkt == "SPX" else len(rec.xprints_df(mkt)) if hasattr(rec, "xprints_df") else 0
-    key = (mkt, exp, n, len(getattr(rec, "oi", {}) or {}))
-    c = getattr(rec, "_unu_frames", {})
-    if c.get(mkt, (None,))[0] == key:
-        return c[mkt][1]
+    """All of today's prints for the market (whole session, sorted). v0.41.2: NOT cached — a full copy of the day's
+    prints kept on the recorder cost hundreds of MB (23 Nov: memory 2.3 GB by 14:00, app gone before the close copy).
+    Only the small result is cached (see result())."""
+    if hasattr(rec, "_unu_frames"):                      # drop a copy left by v0.41.0
+        try:
+            del rec._unu_frames
+        except Exception:                                # noqa: BLE001
+            pass
     f = _spx_frame(rec, exp) if mkt == "SPX" else _x_frame(rec, mkt)
     if len(f):
         f = f.sort_values("ts_ms", kind="stable").reset_index(drop=True)
+        for c in ("strike", "cp", "px", "size", "bid", "ask", "aggr", "S", "oi"):
+            f[c] = f[c].astype("float32")
+    return f
+
+
+def result(rec, mkt: str, exp: str, day, legs: str, on: list, p: dict, x_exp: str = ""):
+    """v0.41.2: (flagged orders only, bursts), cached on the store size + settings — a few hundred rows, not the tape."""
+    n = len(rec._all_prints()) if mkt == "SPX" else len(rec.xprints_df(mkt)) if hasattr(rec, "xprints_df") else 0
+    key = (mkt, exp, x_exp, str(day), n, len(getattr(rec, "oi", {}) or {}), legs, tuple(on), tuple(sorted(p.items())))
+    c = getattr(rec, "_unu_res", {}) or {}
+    if mkt in c and c[mkt][0] == key:
+        return c[mkt][1]
+    f = frame(rec, mkt, exp)
+    g, bu = detect(f, mkt, day, legs, on, p, exp=x_exp)
+    del f
+    if len(g):
+        g = g[g[[k for k in FLAGS if k in g]].any(axis=1)].copy()
     c = dict(c)
-    c[mkt] = (key, f)
+    c[mkt] = (key, (g, bu))
     try:
-        rec._unu_frames = c
+        rec._unu_res = c
     except Exception:                                    # noqa: BLE001
         pass
-    return f
+    return g, bu
 
 
 def detect(f: pd.DataFrame, mkt: str, day: pd.Timestamp, legs: str, on: list, p: dict, exp: str = ""):

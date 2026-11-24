@@ -3,6 +3,15 @@
 Semantic versioning: MAJOR.MINOR.PATCH. The running version is shown in the app's
 status bar, every tab footer, and the Recorder diagnostics panel.
 
+## v0.41.2 — 2026-11-24 · memory: unusual options no longer keeps a copy of the tape · 15:30 safety copy
+- 23 Nov: memory 1.27 GB at 12:00 → 2.12 GB by the 13:16 reconnect (long-dated book skipped) → 2.28 GB peak by 14:00,
+  130 memory thins; no 16:05 / 16:11 attempt in the ship log → the app was most likely killed for memory before the close.
+- Unusual options kept a full copy of the day's prints per market on the recorder (v0.41.0). Now it builds it only
+  while computing and caches just the flagged orders (a few hundred rows).
+- ES / SPY prints measured at ~33 MB on 23 Nov (SPY 503k, ES 20k rows) — not the cause; left as they are.
+- New 15:30 ET safety copy (12:00 · 14:00 · 15:30 · 16:05 close · 16:11 re-send); intraday copies still deleted
+  once the close copy is up.
+
 ## SPX BB v0.48.3 — 2026-11-23 · Disconnect pane under the width / straddle chart
 - width ÷ straddle (how many straddles out the 0.05 bids sit), z-score vs its own rolling 30 min, bars with ±2 lines:
   magenta z > 2 = wings rich vs ATM (edges lagging a falling straddle) · blue z < −2 = ATM rich vs wings.
