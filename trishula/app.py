@@ -20,7 +20,7 @@ from core.view import view
 from core.recorder import Recorder
 from core.timeutil import now_et
 from core.version import LABEL, VERSION
-from tabs import agrev, tastier, vs3d
+from tabs import agrev, vs3d                    # v0.42.5: TASTIER tab disabled (not used; it computed on every load)
 
 logging.getLogger("tastytrade").setLevel(logging.WARNING)
 
@@ -170,9 +170,8 @@ ctl = control_bar(rec)          # common: expiry (0DTE/1DTE/Weekly/Monthly/Other
 pl = player_bar(rec)            # universal: refresh interval + replay player (all tabs)
 v = view(rec, pl["ts_ms"])      # live recorder, or an as-of view at the replay frame
 # lazy tabs: only the open tab computes (Streamlit ≥1.50 on_change="rerun" + .open)
-t1, t2, t3 = st.tabs(["TASTIER", "AG-REV", "VS3D"], key="main_tab", on_change="rerun")
-for t, name, fn in ((t1, "TASTIER", lambda: tastier.render(v, ctl)),
-                    (t2, "AG-REV", lambda: agrev.render(v, ctl)),
+t2, t3 = st.tabs(["AG-REV", "VS3D"], key="main_tab", on_change="rerun")
+for t, name, fn in ((t2, "AG-REV", lambda: agrev.render(v, ctl)),
                     (t3, "VS3D", lambda: vs3d.render(v, ctl, pl["ts_ms"]))):
     if t.open:
         with t:

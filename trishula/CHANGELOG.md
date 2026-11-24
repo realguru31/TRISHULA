@@ -3,6 +3,11 @@
 Semantic versioning: MAJOR.MINOR.PATCH. The running version is shown in the app's
 status bar, every tab footer, and the Recorder diagnostics panel.
 
+## v0.42.5 — 2026-11-24 · TASTIER tab disabled
+- Not in use; as the first tab it computed (dealer surfaces) on every page load. Tabs: AG-REV · VS3D. Code kept.
+- Context: 24 Nov memory 1,291 MB at 12:00 → 2,013 MB at 14:00, peak 2,517 MB (1.30M prints, 151 thins) → app
+  went down just after the 14:00 data copy. Copy built in memory is the suspected trigger (fix proposed, not built).
+
 ## v0.42.4 — 2026-11-24 · Terrain candles: no black shade on blue
 - Blue (up) candles kept the black edge + thick black halo made for the old white candles. Now: no outline or
   halo on any candle — blue and yellow, body edge in its own colour. Only the candle outline changed.
