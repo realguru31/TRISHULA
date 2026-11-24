@@ -242,3 +242,57 @@ std so far today BEFORE looking at results. 10 saved lean days 5–23 Nov: fade 
 23 Nov → 14 trades −49 pts; SIT OUT on the rest. No edge yet; shipped as an off-by-default OrderFlow toggle to collect.
 Write-up's own reported results: 1.1 trades/day 55 % won +5.2 % avg (median +12.5 %); 1.6/day 31 % won +9 % avg,
 median −22 % (lottery-shaped). "drop mid" shipped as a toggle; on 5 days it did not tighten the read (§18).
+
+## §20 · 24 Nov — daily research run #1 (scheduled; scoring only, nothing in the app changed)
+Data: lean files 5–24 Nov on trishula-state (11 valid days: 6 Nov mislabelled; 5 Nov to 15:42, 17 Nov to 13:48, 23 Nov to
+15:17). Day zips: 12, 16, 18, 20 (prints from ~12:00 only), 23 (14:00 copy — no close copy that day), 24 Nov close.
+Scripts: research/daily/2026-11-24/. Cost 0.5 pt per round trip everywhere. Random baseline = same-day drift × direction.
+**24 Nov data problems:** the recorder restarted ~14:13 ET (close status: uptime 119 min, seed replay 14:13, rss 1,800 MB,
+peak 2,144 MB, 117 memory thins, 40 errors, book layer skipped "memory 1,778 MB"). Prints 09:30–14:00 are replay-thin
+(14–42 k/h vs 218–331 k/h after); the lean file holds the full day. state/calls/ does NOT exist on trishula-state → the
+option-priced call log could not be scored. dt2_scorecard / signals_card are only written when the tab is open (only in
+the 23 Nov 14:00 zip) → DT v2 and Signals were recomputed offline from prints + 1-min/5-min candles (no dsign dot; GEX
+from the day's first chain OI) — close to, not identical with, the app.
+
+a) LEAN (single-leg, 0DTE unless noted; 11 days; null = 200 time-shifted-flow runs)
+   rule  total   /day  days up  trades  all-prints  null p50/p95   pctile  24 Nov (all prints)
+   A    +198.4  +18.0   5/11      20      −10.0     −177 / +214     94 %   −14.3 (−31.4)
+   B    −141.0  −12.8   6/11     117      −13.9     −196 / +142     59 %   +88.3 (+61.1)
+   D     −60.1   −5.5   6/11      75       −5.7     −192 / +141     74 %   +10.7 (−74.2)
+   E    −333.0  −30.3   5/11      90     −237.5       +9 / +431      3 %   −94.9 (−52.7)
+   A halves +57.6 / −15.0 per day → still fails the 2nd-half test; A's total is still 5 Nov (+204). No rule has 15 days.
+   E = D + 2-bar break confirm (src "per bar" ignores the window, so window 20 is inert). E is set by the user on 24 Nov:
+   only 24 Nov is out of sample (−94.9). E sits at the 3rd percentile of shifted-flow nulls (worse than random flow).
+   E neighbourhood (11-day totals; X rows × cooldown 5/7/10/12/15):
+     X 0.100: +180 +81 +145 +28 +304 · 0.125: −215 −176 −14 +70 +141 · 0.150: −252 −394 −333 −275 −190
+     X 0.175: −423 −515 −180 −155 −197 · 0.200: −660 −610 −590 −498 −542
+   → no plateau at E; the surface slopes steadily to lower X (more trades). Not refitted. Rolling-window variants (win
+   10–30, X 0.10–0.20, band + confirm) almost never fire (0–15 trades in 11 days), all ≤ 0.
+b) DT tab (6 zip days; edge20 = fw20 − random same-direction; t on edge20, signals overlap so t is optimistic)
+   DT v2 follow 20 sig, fw20 +2.6, edge20 +6.0, 63 % right, 4/6 days + · follow & GEX>0 9 sig (2 days) edge20 +11.0
+   DT v2 initiation 89 sig, fw20 −2.7, edge20 −2.8, 43 % right, 0/6 days +  (S5 = same signal, same numbers)
+   S1 middle/more 148, edge20 +2.7, edge30 +4.6, 5/6 days + (t 2.0) · S1 fewer 93, −0.2
+   S3 fewer/middle/more all ≤ 0 · S4 middle 21 edge20 +6.2 (5/6) · S6 fewer/middle/more edge20 +2.6/+2.8/+2.8, 4–5/6
+   S7 more 40, edge20 +3.6 (4/6) · S7 middle 1 signal.
+   24 Nov: S1 middle +4.5 (22 sig), S6 middle +6.8 (9), initiation −2.8 (13), S3 more −5.7 (19).
+c) ORDERFLOW
+   Extremes (11 lean days): fade 18 · 39 % · −4.1 at 30 min; follow 37 · 54 % · +1.1; with sess filter: fade 15 · 40 %
+   · −4.6, follow 19 · 58 % · +1.7. Walk-forward verdict (earlier days only): sess off 15 trades −94.7 pts, sess on 12
+   trades −31.1. 24 Nov: one event, FOLLOW the 10:00 high → −45.6 (verdict FOLLOW with sess off, SIT OUT with sess on).
+   Unusual (SPX 0DTE, single-leg, drop mid + drop crosses, tab defaults; SPX 30 min later in the flag's direction):
+     new positions 54 · 52 % · +4.4 · edge +4.6 · 4/6 days · bursts 50 · 50 % · edge +0.8 (2/6) · paying up 35 · 46 %
+     · edge −0.1 · big 35 (same orders as paying up on these days) −0.1. 24 Nov: bursts +7.3, new −6.5.
+   ES / SPY options single-leg net delta $ (5-min) vs SPX (3 days): same bar corr ES +0.36 · SPY +0.32; next bar ES 0.00
+   · SPY −0.27 (20 Nov −0.48, 23 Nov −0.34, 24 Nov +0.03).
+d) SPX BB disconnect z (23 + 24 Nov, 21 episodes |z|>2, 30-min per-sign cooldown): width/straddle ratio reverts in ~15
+   min — z>2: width −5.6 % vs straddle −1.9 % (ratio −3.7 pts); z<−2: width −10.0 % vs straddle −15.7 % (+5.7). Gone by
+   30 / 60 min (|diff| ≤ 2). All-minute drift −9 % width / −8 % straddle per 15 min (theta). 2 days only.
+e) NEW IDEAS (pre-registered 16:55 ET in research/daily/2026-11-24/prereg.txt before testing)
+   N1 Lean opens only 10:00–14:59: A +198 → −54 (better 2/11 days), D −60 → −197 (5/11), E −333 → −331 (4/11). FAIL.
+   N2 'new positions' flags agreeing with session lean: 29 flags edge +6.0 (3/6 days) vs disagreeing 25 flags +3.0
+      (3/6). No clear difference. Not a rule.
+   N3 Prior-close VIX < 20 (5 d) vs ≥ 20 (6 d): A +168 / +30 · B −68 / −73 · D +115 / −175 · E −74 / −259. Every lean
+      rule did worse with VIX ≥ 20 (all the recent days); descriptive only, regime and calendar are confounded.
+Verdict: nothing has 15 days; nothing to APPROVE. Keep counting: DT v2 follow (+6 edge, 4/6 d), S1 middle (5/6 d),
+S6, unusual "new positions" (4/6 d), BB disconnect 15-min reversion. Consistently negative: DT initiation / S5 (0/6 d)
+and extremes FADE.

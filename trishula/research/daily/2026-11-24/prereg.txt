@@ -1,0 +1,10 @@
+2026-11-24 16:55 ET
+PRE-REGISTERED before testing (rules fixed, no tuning after):
+N1  Lean time-of-day gate: rules A, D, E unchanged but a position may only be OPENED 10:00-14:59 ET (colour changes outside
+    that window are ignored; an open position still exits on the next opposite colour or 15:59). Pass bar: total better than
+    the ungated rule on >= 60 % of days.
+N2  "New positions" flag + session money: keep only unusual 'new' flags whose direction agrees with the session's
+    single-leg 0DTE lean since 09:30 (sign of cum bull - cum bear at the flag minute). SPX 30 min later in that direction
+    vs same-day random (drift x dir). Compare with the disagreeing flags.
+N3  VIX regime for lean A/D/E: prior-close VIX >= 20 vs < 20 (threshold fixed now, Yahoo ^VIX daily close of the
+    previous session). Report per-day lean P&L split by regime; a rule "trade only in regime X" is NOT chosen here.
