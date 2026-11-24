@@ -453,14 +453,14 @@ def draw_candles(ax, bars, x0, x1, p_min, p_max):
     bvis = np.sort(bn[inwin])
     spacing = np.median(np.diff(bvis)) if bw > 1 else (x1 - x0) / 390.0
     cwidth = spacing * 0.8
-    halo = [pe.Stroke(linewidth=2.4, foreground="#000000"), pe.Normal()]
+    halo = [pe.Stroke(linewidth=1.6, foreground="#1f2937"), pe.Normal()]   # v0.42.4: thin dark-grey (was thick black)
     for x, (_, r) in zip(bn[inwin], bars[inwin].iterrows()):
         up = r["c"] >= r["o"]; body = UP if up else DOWN
         ln, = ax.plot([x, x], [r["l"], r["h"]], color=body, lw=1.0, zorder=5); ln.set_path_effects(halo)
-        edge = "#000000" if up else "#ff8c00"
+        edge = UP if up else "#ff8c00"                   # v0.42.4: blue edge on blue (was black)
         h = max(abs(r["c"] - r["o"]), (p_max - p_min) * 0.0012)
         rect = plt.Rectangle((x - cwidth / 2, min(r["o"], r["c"])), cwidth, h, facecolor=body, edgecolor=edge, lw=0.6, zorder=6)
-        rect.set_path_effects([pe.withStroke(linewidth=1.4, foreground="#000000" if up else "#1f2937")])
+        rect.set_path_effects([pe.withStroke(linewidth=1.4, foreground="#1f2937")])
         ax.add_patch(rect)
 
 
