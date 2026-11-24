@@ -252,6 +252,9 @@ def unusual_controls():
         p["new_min_oi"] = c[2].segmented_control("new min oi", [50, 100, 500, 1000], default=100, key="of_new_min_oi",
                                                  format_func=lambda v: f"OI ≥ {v:,}") or 100
         p["new_n"] = c[3].segmented_control("new n", N, default=10, key="of_new_n", format_func=fn) or 10
+    p["drop_cross"] = st.toggle("drop crosses / blocks at mid", value=True, key="of_cross",
+                                help="a print at the middle of the bid/ask AND in the day's top 0.5 % by size (≥ 50 "
+                                     "contracts) is usually a negotiated cross or hedge, not someone paying up")
     c = st.columns([1.2, 2, 3, 2])
     c[0].markdown("**table**")
     tb = dict(n=c[1].segmented_control("rows", [20, 50, 100], default=20, key="of_tab_n",
@@ -264,12 +267,12 @@ def unusual_controls():
 
 
 # ── v0.42.0 fade or follow at the day's extremes ─────────────────────────────────────────────────────────────────────
-def extremes_panel(rec):
+def extremes_panel(rec, sess=False):
     """Score of the last 15 finished events of each kind (earlier saved days + today) → FADE / FOLLOW / SIT OUT, and
     today's events for the chart. Cached on the recorder per minute."""
     from core import extremes as XT
     from core import lean as LN
-    key = int(now_et().timestamp() // 60)
+    key = (int(now_et().timestamp() // 60), sess)
     c = getattr(rec, "_xt_cache", None)
     if c and c[0] == key:
         return c[1]
@@ -284,14 +287,48 @@ def extremes_panel(rec):
     except Exception:                                    # noqa: BLE001
         ev_h = pd.DataFrame()
     ev = pd.concat([x for x in (ev_h, ev_t) if len(x)], ignore_index=True) if (len(ev_h) or len(ev_t)) else pd.DataFrame()
-    sc = XT.score(ev) if len(ev) else {"fade": (0, np.nan, np.nan), "follow": (0, np.nan, np.nan), "verdict": "SIT OUT"}
-    out = (sc, ev_t, len(set(ev_h["day"])) if len(ev_h) else 0)
+    sc = XT.score(ev, sess) if len(ev) else {"fade": (0, np.nan, np.nan), "follow": (0, np.nan, np.nan), "verdict": "SIT OUT"}
+    if sess and len(ev_t) and "sess_ok" in ev_t:
+        ev_t = ev_t[ev_t["sess_ok"].fillna(False).astype(bool)]
+    log = pd.DataFrame()
+    try:                                                 # v0.42.1: paper-grade today's calls on live 1DTE bid/ask
+        exps = [str(e) for e in (getattr(rec, "exps", None) or [])]
+        if len(exps) > 1 and len(ev_t):
+            log = XT.grade(ev_t, rec.chain_df(), exps[1], int(now_et().timestamp() * 1000))
+            _save_calls(rec, today, log, sess)
+    except Exception:                                    # noqa: BLE001
+        pass
+    out = (sc, ev_t, len(set(ev_h["day"])) if len(ev_h) else 0, log)
     try:
         rec._xt_cache = (key, out)
     except Exception:                                    # noqa: BLE001
         pass
     return out
 
+
+
+def _save_calls(rec, day, log, sess):
+    """Once after 16:00 ET: today's graded calls → state/calls/YYYY-MM-DD.json (the scorecard collects over days)."""
+    if not len(log) or now_et().hour < 16 or getattr(rec, "_calls_saved", None) == day:
+        return
+    from core import state as ST
+    try:
+        rows = log.assign(t=log["t"].astype(str)).to_dict(orient="records")
+        ST.save_file(f"state/calls/{day}.json", {"day": day, "session_filter": sess, "calls": rows}, f"calls {day}")
+        rec._calls_saved = day
+    except Exception:                                    # noqa: BLE001
+        pass
+
+
+def noise_box(a_all: pd.DataFrame, spot: float) -> str:
+    """zero's NOISE FILTER: flow read (single-leg, not mid) vs set aside (spread legs + mid prints), today, $ delta."""
+    if a_all is None or not len(a_all) or not spot:
+        return ""
+    tot = float((a_all["al_buy"] + a_all["al_sell"]).sum())
+    read = float((a_all["slx_buy"] + a_all["slx_sell"]).sum()) if "slx_buy" in a_all else tot
+    aside = max(tot - read, 0.0)
+    return (f"noise filter · read ${read * spot / 1e9:,.2f}B Δ · set aside ${aside * spot / 1e9:,.2f}B "
+            f"({aside / tot:.0%} — spread legs + mid prints)" if tot > 0 else "")
 
 def extremes_caption(sc, ndays):
     def one(k):
@@ -364,9 +401,27 @@ def render(rec):
                       "of single-leg 0DTE money lean AGAINST it (→ fade) or push THROUGH it (→ follow)? Scored on the last "
                       "15 finished events of each kind from the saved days + today, SPX 30 min later. Neither working → "
                       "SIT OUT. Collecting — tune once ~20 days are in."):
+        flt = st.segmented_control("fade/follow filter", ["session flow agrees", "all events"],
+                                   default="session flow agrees", key="of_xt_flt", label_visibility="collapsed",
+                                   help="session flow agrees = only take an event when the day's money since 09:30 points "
+                                        "the same way as the trade (zero's SES driver). 5–23 Nov: follow 61 % right, "
+                                        "+4.4 pts, 1.8 a day vs 56 % / +2.4 / 3.6 a day for all events.") or "session flow agrees"
         try:
-            xt = extremes_panel(rec)
+            xt = extremes_panel(rec, sess=flt == "session flow agrees")
             st.markdown(extremes_caption(xt[0], xt[2]), unsafe_allow_html=True)
+            lg = xt[3]
+            if len(lg):
+                show = lg.assign(time=pd.to_datetime(lg["t"]).dt.strftime("%H:%M"),
+                                 result=[("open " if o else "") + (f"{p:+.0%}" if p == p else "—")
+                                         for o, p in zip(lg["open"], lg["pct"])],
+                                 spx=[("open" if o else f"{x:+.1f}") for o, x in zip(lg["open"], lg["spx_pts"])])
+                st.dataframe(show[["time", "kind", "trade", "contract", "entry", "exit", "result", "spx"]], hide_index=True,
+                             width="stretch", key="of_xt_log",
+                             column_config={"entry": st.column_config.NumberColumn("entry (ask)", format="%.2f"),
+                                            "exit": st.column_config.NumberColumn("exit (bid, 30 min)", format="%.2f"),
+                                            "spx": st.column_config.TextColumn("SPX pts 30 min")})
+                st.caption("call log — paper trades on live quotes: 1DTE one strike in the money, bought at the ask, "
+                           "sold at the bid 30 min later (zero's method). Saved to the state branch after 16:00.")
         except Exception as e:                           # noqa: BLE001
             st.caption(f"fade / follow: {type(e).__name__}: {e}")
     for m in (["SPX", "ES", "SPY"] if mkt == "3 stacked" else [mkt]):
@@ -393,6 +448,13 @@ def render(rec):
                         f"{LBL[k]} {(len(bu) if k == 'burst' else int(g[k].sum())):,}" for k in on)
             except Exception as e:                       # noqa: BLE001
                 st.caption(f"unusual: {type(e).__name__}: {e}")
+        if m == "SPX":
+            try:
+                nb = noise_box(OF.minutes(rec, str(exps[0])), float(b["c"].iloc[-1]))
+                if nb:
+                    st.caption(nb)
+            except Exception:                            # noqa: BLE001
+                pass
         st.caption(f"{lbl} · {len(a):,} minute × row cells · bought {a['buy'].sum() / 1e6:,.2f}M Δ · "
                    f"sold {a['sell'].sum() / 1e6:,.2f}M Δ · net {(a['buy'].sum() - a['sell'].sum()) / 1e6:+,.2f}M{cnt}")
         h = 560 if mkt == "3 stacked" else 820

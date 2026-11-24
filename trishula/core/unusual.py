@@ -128,6 +128,11 @@ def detect(f: pd.DataFrame, mkt: str, day: pd.Timestamp, legs: str, on: list, p:
     if legs == "single-leg":
         f = f[f["sl"].values]
     f = f[f["aggr"].values != 0]
+    if p.get("drop_cross") and len(f):                  # v0.42.1: crosses / negotiated blocks (zero: "giant blocks are
+        px_, b_, a_ = f["px"].values, f["bid"].values, f["ask"].values   # often crosses or hedges")
+        at_mid = np.abs(px_ - (a_ + b_) / 2) <= np.maximum((a_ - b_) * 0.1, 0.0001)
+        big = f["size"].values >= max(float(np.nanpercentile(f["size"].values, 99.5)), 50.0)
+        f = f[~(at_mid & big)]
     if p.get("drop_mid"):                                # v0.42.0: ignore prints traded inside the spread
         f = f[~((f["px"].values > f["bid"].values + 1e-9) & (f["px"].values < f["ask"].values - 1e-9))]
     if not len(f):

@@ -25,11 +25,12 @@ def events(d: dict) -> pd.DataFrame:
     """One day (lean-history dict: rows + spx) → events with kind, side, time, price, lean, result."""
     from . import lean as LN
     b = LN.bars(d, "0DTE", "single-leg", 1)
-    cols = ["t", "side", "kind", "px", "lean", "dir", "pts"]
+    cols = ["t", "side", "kind", "px", "lean", "dir", "pts", "sess_ok"]
     if len(b) < 40:
         return pd.DataFrame(columns=cols)
     net, tot = (b.b - b.r).rolling(WIN, min_periods=5).sum(), (b.b + b.r).rolling(WIN, min_periods=5).sum()
     lean = (net / tot.where(tot > 0)).fillna(0.0)
+    ses = ((b.b - b.r).cumsum() / (b.b + b.r).cumsum().where(lambda x: x > 0)).fillna(0.0).values   # session lean
     sdv = lean.expanding(min_periods=10).std().fillna(lean.abs().max() or 1.0).clip(lower=0.005).values
     lean = lean.values
     h, l, c, t = b.h.values, b.l.values, b.c.values, b.index
@@ -55,7 +56,8 @@ def events(d: dict) -> pd.DataFrame:
             last[side] = t[i]
             j = i + FWD
             pts = (c[j] - c[i]) * dr if j < len(b) else np.nan
-            out.append((t[i], side, kind, float(h[i] if side == "high" else l[i]), float(lv), dr, pts))
+            out.append((t[i], side, kind, float(h[i] if side == "high" else l[i]), float(lv), dr, pts,
+                        bool(np.sign(ses[i]) == dr)))
         hi, lo = max(hi, h[i]), min(lo, l[i])
     return pd.DataFrame(out, columns=cols)
 
@@ -78,8 +80,11 @@ def history(today: str, max_days: int = 20) -> pd.DataFrame:
     return pd.concat(out, ignore_index=True) if out else pd.DataFrame()
 
 
-def score(ev: pd.DataFrame) -> dict:
-    """Last NHIST finished events of each kind → {kind: (n, right, avg)} + verdict."""
+def score(ev: pd.DataFrame, sess: bool = False) -> dict:
+    """Last NHIST finished events of each kind → {kind: (n, right, avg)} + verdict. sess = only events where the
+    session's money (since 09:30) points the same way as the trade (zero's "SES" driver; 10 days: follow 61 % / +4.4)."""
+    if sess and len(ev) and "sess_ok" in ev:
+        ev = ev[ev["sess_ok"].fillna(False).astype(bool)]
     res = {}
     for k in ("fade", "follow"):
         e = ev[(ev["kind"] == k) & ev["pts"].notna()].sort_values("t").tail(NHIST) if len(ev) else pd.DataFrame()
@@ -87,3 +92,36 @@ def score(ev: pd.DataFrame) -> dict:
     ok = {k: v for k, v in res.items() if v[0] >= 5 and v[2] > 0 and v[1] >= 0.55}
     verdict = max(ok, key=lambda k: ok[k][2]).upper() if ok else "SIT OUT"
     return dict(res, verdict=verdict)
+
+
+def grade(ev: pd.DataFrame, chain: pd.DataFrame, exp1: str, now_ms: int) -> pd.DataFrame:
+    """Paper-grade today's events on a real contract at the live quotes (zero: "buy at the ask, sell at the bid"):
+    1DTE, one strike (5 pts) in the money — call for a long, put for a short. Entry = ask at the first chain snapshot
+    at/after the event, exit = bid FWD min later (or the latest snapshot while the trade is still open)."""
+    cols = ["t", "kind", "trade", "contract", "entry", "exit", "pct", "spx_pts", "open"]
+    if ev is None or not len(ev) or chain is None or not len(chain):
+        return pd.DataFrame(columns=cols)
+    from .timeutil import ET
+    c = chain[chain["exp"].astype(str) == exp1][["ts_ms", "strike", "cp", "bid", "ask", "spot"]]
+    if not len(c):
+        return pd.DataFrame(columns=cols)
+    c = c.sort_values("ts_ms")
+    out = []
+    for r in ev.itertuples():
+        t_ms = int(pd.Timestamp(r.t).tz_localize(ET).value // 10**6)
+        cp = 1 if r.dir > 0 else -1
+        k = (np.floor((r.px - 5) / 5) * 5) if cp > 0 else (np.ceil((r.px + 5) / 5) * 5)
+        leg = c[(c["cp"] == cp) & (c["strike"] == k)]
+        if not len(leg):
+            continue
+        a = leg[leg["ts_ms"] >= t_ms].head(1)
+        if not len(a) or a["ts_ms"].iloc[0] - t_ms > 6 * 60_000:      # snapshots thin to 5 min under memory pressure
+            continue
+        entry = float(a["ask"].iloc[0])
+        t_out = t_ms + FWD * 60_000
+        is_open = now_ms < t_out
+        b = leg[leg["ts_ms"] <= min(t_out, now_ms)].tail(1)
+        ex = float(b["bid"].iloc[0]) if len(b) else np.nan
+        out.append((r.t, r.kind, "LONG" if cp > 0 else "SHORT", f"{exp1[5:]} {k:.0f}{'C' if cp > 0 else 'P'}", entry, ex,
+                    (ex / entry - 1) if entry > 0 and ex == ex else np.nan, r.pts, is_open))
+    return pd.DataFrame(out, columns=cols)

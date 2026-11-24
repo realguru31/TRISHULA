@@ -3,6 +3,19 @@
 Semantic versioning: MAJOR.MINOR.PATCH. The running version is shown in the app's
 status bar, every tab footer, and the Recorder diagnostics panel.
 
+## v0.42.1 — 2026-11-24 · OrderFlow: rest of the "zero" write-up
+- fade / follow filter: "session flow agrees" (default) = only events where the day's money since 09:30 points the
+  same way as the trade (zero's SES driver; 5–23 Nov follow 61 % right, +4.4 pts, 1.8/day) · or "all events".
+- Call log under the verdict: each of today's events paper-traded on a real contract at live quotes (zero's method):
+  1DTE one strike in the money (call for long, put for short), bought at the ASK at the event, sold at the BID 30 min
+  later (or marked "open"); shows option % next to SPX points. Saved to state/calls/YYYY-MM-DD.json after 16:00.
+  18 Nov test: 11:16 SHORT 11-19 7310P 62.00 → 55.90 = −10 % while SPX went +0.6 pts the trade's way — the toll.
+- Noise filter line (SPX): today's flow read (single-leg, not mid) vs set aside (spread legs + mid prints), $ delta.
+- Unusual options: "drop crosses / blocks at mid" (default on) — a print at the middle of the bid/ask AND in the
+  day's top 0.5 % by size (≥ 50 contracts) is dropped as a likely cross / hedge.
+- Not possible on our feed: sweeps (every SPX print has the same exchange code). Not built: a put "seatbelt"
+  discount — on 5 saved days SPX puts read as well as calls (§18).
+
 ## v0.42.0 — 2026-11-24 · OrderFlow: "drop mid" toggle · fade / follow at highs & lows (from the "zero" write-up)
 - keep mid / drop mid: ignore prints traded strictly inside the bid/ask (34–43 % of SPX prints) in the map, footprint
   and unusual options, SPX / ES / SPY.
