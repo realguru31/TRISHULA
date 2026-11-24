@@ -56,53 +56,115 @@ def _drop_intraday(day: str, keep_name: str) -> None:
             ST._api("DELETE", f"/releases/assets/{a['id']}")
 
 
-def day_zip(rec) -> bytes:
-    """L13: the day's recorded data as a zip of parquet/json (prints with spreadLeg, snapshots, OI, price)."""
+def _parts(rec):
     import pandas as pd
-    buf = io.BytesIO()
-    parts = {"prints.parquet": lambda: rec.prints_df(), "chain_snapshots.parquet": lambda: rec.chain_df(),
-             "spot.parquet": lambda: rec.spot_df(), "es1m.parquet": lambda: rec.es_df(),
-             "candles5.parquet": lambda: rec.candles5_df(), "spx1m.parquet": lambda: rec.candles_df(),
-             "opt1m_backfill.parquet": lambda: rec.opt1m_df(),
-             "x_es_prints.parquet": lambda: (rec.xprints_df("ES") if hasattr(rec, "xprints_df") else None),   # v0.40.0
-             "x_spy_prints.parquet": lambda: (rec.xprints_df("SPY") if hasattr(rec, "xprints_df") else None),          # L22: the ridges' pre-restart source
-             "book.parquet": lambda: (rec.book_frame() if hasattr(rec, "book_frame") else None),  # v0.32.1:
-             # long-dated book (all subscribed expiries beyond 0/1DTE: sym, exp, strike, cp, type, iv, gamma, oi,
-             # volume) as at the send — OI is fixed for the day, so Terrain's book layer can be rebuilt offline
-             "dt2_scorecard.parquet": lambda: (pd.concat(list(rec.ui_state.get("_dt2_cards", {}).values()), ignore_index=True)
-                                               if rec.ui_state.get("_dt2_cards") else None),   # v0.17: DT v2 signals + outcomes
-             "signals_card.parquet": lambda: (pd.concat(list(rec.ui_state.get("_sig_cards", {}).values()), ignore_index=True)
-                                              if rec.ui_state.get("_sig_cards") else None)}   # v0.18: Signals view marks + outcomes
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-        for name, fn in parts.items():
-            try:
-                df = fn()
-                if df is not None and len(df):
-                    b = io.BytesIO()
-                    df.to_parquet(b)
-                    z.writestr(name, b.getvalue())
+    return {"prints.parquet": lambda: rec.prints_df(), "chain_snapshots.parquet": lambda: rec.chain_df(),
+            "spot.parquet": lambda: rec.spot_df(), "es1m.parquet": lambda: rec.es_df(),
+            "candles5.parquet": lambda: rec.candles5_df(), "spx1m.parquet": lambda: rec.candles_df(),
+            "opt1m_backfill.parquet": lambda: rec.opt1m_df(),
+            "x_es_prints.parquet": lambda: (rec.xprints_df("ES") if hasattr(rec, "xprints_df") else None),   # v0.40.0
+            "x_spy_prints.parquet": lambda: (rec.xprints_df("SPY") if hasattr(rec, "xprints_df") else None),
+            "book.parquet": lambda: (rec.book_frame() if hasattr(rec, "book_frame") else None),  # v0.32.1: long-dated
+            # book (all subscribed expiries beyond 0/1DTE) as at the send — OI is fixed for the day
+            "dt2_scorecard.parquet": lambda: (pd.concat(list(rec.ui_state.get("_dt2_cards", {}).values()), ignore_index=True)
+                                              if rec.ui_state.get("_dt2_cards") else None),   # v0.17
+            "signals_card.parquet": lambda: (pd.concat(list(rec.ui_state.get("_sig_cards", {}).values()), ignore_index=True)
+                                             if rec.ui_state.get("_sig_cards") else None)}   # v0.18
+
+
+def _write_parquet(df, path: str, rows: int = 200_000) -> None:
+    """v0.42.6: parquet straight to disk in slices — the Arrow copy is one slice, not the whole table."""
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+    w = None
+    try:
+        for i in range(0, len(df), rows):
+            t = pa.Table.from_pandas(df.iloc[i:i + rows], preserve_index=False)
+            if w is None:
+                w = pq.ParquetWriter(path, t.schema)
+            elif t.schema != w.schema:
+                t = t.cast(w.schema, safe=False)
+            w.write_table(t)
+            del t
+    finally:
+        if w is not None:
+            w.close()
+
+
+def day_zip_file(rec, path: str) -> int:
+    """v0.42.6: the day's data written as a zip FILE on disk, one part at a time (was: whole zip + every parquet in
+    memory at once → +several hundred MB at 1.3M prints; 23 / 24 Nov the app died right after the 14:00 copy).
+    Returns the file size."""
+    import gc
+    import os
+    import tempfile
+    from . import mem as MEM
+    tmp = tempfile.mkdtemp(prefix="tri_zip_")
+    try:
+        with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED, allowZip64=True) as z:
+            for name, fn in _parts(rec).items():
+                fp = os.path.join(tmp, name)
+                try:
+                    df = fn()
+                    if df is not None and len(df):
+                        _write_parquet(df, fp)
+                        del df
+                        z.write(fp, name)
+                except Exception as e:                   # noqa: BLE001
+                    z.writestr(name + ".error.txt", f"{type(e).__name__}: {e}")
+                finally:
+                    try:
+                        os.remove(fp)
+                    except OSError:
+                        pass
+                    gc.collect()
+                    try:
+                        MEM.trim(0)
+                    except Exception:                    # noqa: BLE001
+                        pass
+            with rec.lock:
+                oi = {k: dict(v) for k, v in rec.oi_log.items()}
+                legs = {k: list(v) for k, v in rec.legs.items()}
+            z.writestr("oi_log.json", json.dumps(oi))
+            z.writestr("legs.json", json.dumps(legs))
+            del oi, legs
+            z.writestr("status.json", json.dumps(rec.status(), default=str))
+            z.writestr("book_state.json", json.dumps(getattr(rec, "book_state", {}) or {}, default=str))
+            try:                                         # v0.29.0: SPX BB edge series + alerts
+                trk = getattr(rec, "_bb", None)
+                if trk is not None:
+                    z.writestr("spx_bb.json", json.dumps({"series": trk.series, "alerts": trk.alerts, "cfg": trk.cfg},
+                                                         default=str))
             except Exception as e:                       # noqa: BLE001
-                z.writestr(name + ".error.txt", f"{type(e).__name__}: {e}")
-        with rec.lock:
-            oi = {k: dict(v) for k, v in rec.oi_log.items()}
-            legs = {k: list(v) for k, v in rec.legs.items()}
-        z.writestr("oi_log.json", json.dumps(oi))
-        z.writestr("legs.json", json.dumps(legs))
-        z.writestr("status.json", json.dumps(rec.status(), default=str))
-        z.writestr("book_state.json", json.dumps(getattr(rec, "book_state", {}) or {}, default=str))
-        try:                                             # v0.29.0: SPX BB edge series + alerts
-            trk = getattr(rec, "_bb", None)
-            if trk is not None:
-                z.writestr("spx_bb.json", json.dumps({"series": trk.series, "alerts": trk.alerts, "cfg": trk.cfg},
-                                                     default=str))
-        except Exception as e:                           # noqa: BLE001
-            z.writestr("spx_bb.error.txt", f"{type(e).__name__}: {e}")
-        try:                                             # v0.24.0: lean minutes (single-leg + all, 0DTE/1DTE, $M Δ) + SPX 1m
-            from . import lean as LN
-            z.writestr("lean_minutes.json", json.dumps(LN.live_day(rec) or {}, default=float))
-        except Exception as e:                           # noqa: BLE001
-            z.writestr("lean_minutes.error.txt", f"{type(e).__name__}: {e}")
-    return buf.getvalue()
+                z.writestr("spx_bb.error.txt", f"{type(e).__name__}: {e}")
+            try:                                         # v0.24.0: lean minutes + SPX 1m
+                from . import lean as LN
+                z.writestr("lean_minutes.json", json.dumps(LN.live_day(rec) or {}, default=float))
+            except Exception as e:                       # noqa: BLE001
+                z.writestr("lean_minutes.error.txt", f"{type(e).__name__}: {e}")
+        return os.path.getsize(path)
+    finally:
+        try:
+            os.rmdir(tmp)
+        except OSError:
+            pass
+
+
+def day_zip(rec) -> bytes:
+    """Bytes of the day zip (the 📦 download button). Built on disk first (v0.42.6), then read once."""
+    import os
+    import tempfile
+    fd, path = tempfile.mkstemp(suffix=".zip")
+    os.close(fd)
+    try:
+        day_zip_file(rec, path)
+        with open(path, "rb") as f:
+            return f.read()
+    finally:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
 
 
 def _release(day: str) -> dict:
@@ -152,16 +214,33 @@ def send(rec, label: str | None = None) -> str:
         n = now_et()
         day = str(rec.exps[0]) if rec.exps else n.strftime("%Y-%m-%d")
         name = f"trishula_day_{day.replace('-', '')}_{label or n.strftime('%H%M')}.zip"
-        data = day_zip(rec)
-        rel = _release(day)
-        for a in rel.get("assets", []):                  # same name → replace
-            if a.get("name") == name:
-                ST._api("DELETE", f"/releases/assets/{a['id']}")
-        up = f"https://uploads.github.com/repos/{ST._cfg['repo']}/releases/{rel['id']}/assets"
-        h = dict(ST._h(), **{"Content-Type": "application/zip"})
-        r = requests.post(up, params={"name": name}, headers=h, data=data, timeout=300)
-        r.raise_for_status()
-        status["last"] = f"{n:%H:%M} ET · {name} · {len(data) / 1e6:.1f} MB"
+        import os
+        import tempfile
+        from . import mem as MEM
+        try:                                             # v0.42.6: high memory → thin first, then build
+            if MEM.rss_mb() > MEM.SOFT_MB and hasattr(rec, "_mem_guard"):
+                rec._mem_guard()
+        except Exception:                                # noqa: BLE001
+            pass
+        fd, path = tempfile.mkstemp(suffix=".zip")
+        os.close(fd)
+        try:
+            size = day_zip_file(rec, path)               # on disk, one part at a time
+            rel = _release(day)
+            for a in rel.get("assets", []):              # same name → replace
+                if a.get("name") == name:
+                    ST._api("DELETE", f"/releases/assets/{a['id']}")
+            up = f"https://uploads.github.com/repos/{ST._cfg['repo']}/releases/{rel['id']}/assets"
+            h = dict(ST._h(), **{"Content-Type": "application/zip", "Content-Length": str(size)})
+            with open(path, "rb") as f:                  # streamed from disk, not held in memory
+                r = requests.post(up, params={"name": name}, headers=h, data=f, timeout=600)
+            r.raise_for_status()
+        finally:
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+        status["last"] = f"{n:%H:%M} ET · {name} · {size / 1e6:.1f} MB"
         status["error"] = None
         try:
             _prune()

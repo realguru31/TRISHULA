@@ -3,6 +3,11 @@
 Semantic versioning: MAJOR.MINOR.PATCH. The running version is shown in the app's
 status bar, every tab footer, and the Recorder diagnostics panel.
 
+## v0.42.6 — 2026-11-24 · data copy built on disk, part by part
+- The day zip is written to a temp file one part at a time (parquet in 200k-row slices), uploaded straight from the
+  file, then deleted; memory over the soft limit → thin first. Measured on 24 Nov 14:00 data (1.30M prints, 119k
+  chain rows): old method +49 MB peak, new +4 MB. Small — the zip was NOT the main cause of the 2.5 GB peak.
+
 ## v0.42.5 — 2026-11-24 · TASTIER tab disabled
 - Not in use; as the first tab it computed (dealer surfaces) on every page load. Tabs: AG-REV · VS3D. Code kept.
 - Context: 24 Nov memory 1,291 MB at 12:00 → 2,013 MB at 14:00, peak 2,517 MB (1.30M prints, 151 thins) → app
