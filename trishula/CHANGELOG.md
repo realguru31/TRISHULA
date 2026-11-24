@@ -3,6 +3,17 @@
 Semantic versioning: MAJOR.MINOR.PATCH. The running version is shown in the app's
 status bar, every tab footer, and the Recorder diagnostics panel.
 
+## v0.42.0 — 2026-11-24 · OrderFlow: "drop mid" toggle · fade / follow at highs & lows (from the "zero" write-up)
+- keep mid / drop mid: ignore prints traded strictly inside the bid/ask (34–43 % of SPX prints) in the map, footprint
+  and unusual options, SPX / ES / SPY.
+- Toggle "fade / follow at highs & lows" (off by default): at each new session high / low after 10:00, the last 15 min
+  of single-leg 0DTE money leaning AGAINST it → FADE, pushing THROUGH it → FOLLOW (cut = 0.5 × the lean's own
+  standard deviation so far today). Scored on the last 15 finished events of each kind from the saved lean days +
+  today, SPX 30 min later → verdict FADE / FOLLOW / SIT OUT (needs ≥ 5 events, average > 0, ≥ 55 % right).
+  Today's events marked on the SPX candles (yellow = fade, cyan = follow; hover = lean and 30-min result).
+- First look, 10 saved days (5–23 Nov): fade 18 events 39 % right −4.1 pts · follow 36 events 56 % +2.4; the
+  walk-forward verdict would have traded FOLLOW on 4 days for −49 pts. Collecting; tune at ~20 days.
+
 ## v0.41.2 — 2026-11-24 · memory: unusual options no longer keeps a copy of the tape · 15:30 safety copy
 - 23 Nov: memory 1.27 GB at 12:00 → 2.12 GB by the 13:16 reconnect (long-dated book skipped) → 2.28 GB peak by 14:00,
   130 memory thins; no 16:05 / 16:11 attempt in the ship log → the app was most likely killed for memory before the close.

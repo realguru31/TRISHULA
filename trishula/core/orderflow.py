@@ -25,17 +25,25 @@ def _spx_map(rec) -> dict:
     return {}
 
 
+def _mid(d: pd.DataFrame) -> np.ndarray:
+    """v0.42.0: printed strictly inside the bid/ask (two sides meeting halfway — the "zero" write-up ignores these)."""
+    if not {"px", "bid", "ask"} <= set(d.columns):
+        return np.zeros(len(d), bool)
+    px, b, a = (d[c].values.astype(float) for c in ("px", "bid", "ask"))
+    return (px > b + 1e-9) & (px < a - 1e-9)
+
+
 def minutes(rec, exp: str) -> pd.DataFrame:
     """Per minute × 2-pt SPX row: sl_buy, sl_sell, al_buy, al_sell (shares of SPX delta). Incremental on the print store."""
     from .lean import _bs_delta
     from . import expiry as EX
-    cols = ["m", "row", "sl_buy", "sl_sell", "al_buy", "al_sell"]
+    cols = ["m", "row", "sl_buy", "sl_sell", "al_buy", "al_sell", "slx_buy", "slx_sell", "alx_buy", "alx_sell"]
     df = rec._all_prints()
     with rec.lock:
         st_ = getattr(rec, "_oflow", None)
         gen = getattr(rec, "_pgen", 0)
-        if st_ is None or st_["exp"] != exp or st_["gen"] != gen or st_["n"] > len(df):
-            st_ = {"exp": exp, "gen": gen, "n": 0, "agg": None}
+        if st_ is None or st_["exp"] != exp or st_["gen"] != gen or st_["n"] > len(df) or not st_.get("x"):
+            st_ = {"exp": exp, "gen": gen, "n": 0, "agg": None, "x": True}
         n0 = st_["n"]
     if len(df) > n0:
         new = df.iloc[n0:]
@@ -67,10 +75,15 @@ def minutes(rec, exp: str) -> pd.DataFrame:
             sd = np.sign(new["aggr"].values.astype(float)) * np.sign(cp) * dl * new["size"].values.astype(float) * 100
             sl = ~new["spread_leg"].values.astype(bool) if "spread_leg" in new else np.ones(len(new), bool)
             ok = np.isfinite(spot) & np.isfinite(sd)
+            nm = ~_mid(new)                              # v0.42.0: x = without prints traded inside the spread
             a = pd.DataFrame({"m": m[ok], "row": np.floor(spot[ok] / ROW) * ROW,
                               "sl_buy": np.where(sl, np.clip(sd, 0, None), 0.0)[ok],
                               "sl_sell": np.where(sl, np.clip(-sd, 0, None), 0.0)[ok],
-                              "al_buy": np.clip(sd, 0, None)[ok], "al_sell": np.clip(-sd, 0, None)[ok]})
+                              "al_buy": np.clip(sd, 0, None)[ok], "al_sell": np.clip(-sd, 0, None)[ok],
+                              "slx_buy": np.where(sl & nm, np.clip(sd, 0, None), 0.0)[ok],
+                              "slx_sell": np.where(sl & nm, np.clip(-sd, 0, None), 0.0)[ok],
+                              "alx_buy": np.where(nm, np.clip(sd, 0, None), 0.0)[ok],
+                              "alx_sell": np.where(nm, np.clip(-sd, 0, None), 0.0)[ok]})
             agg = a if st_["agg"] is None else pd.concat([st_["agg"], a], ignore_index=True)
             st_["agg"] = agg.groupby(["m", "row"], as_index=False, sort=True).sum()
         st_ = dict(st_, n=len(df))
@@ -119,13 +132,13 @@ def xminutes(rec, mkt: str) -> pd.DataFrame:
     SPX-equivalent delta shares (delta × size × multiplier × underlying ÷ SPX), single-leg and all, plus und o/h/l/c.
     Incremental on the store."""
     from .timeutil import ET
-    cols = ["m", "row", "sl_buy", "sl_sell", "al_buy", "al_sell"]
+    cols = ["m", "row", "sl_buy", "sl_sell", "al_buy", "al_sell", "slx_buy", "slx_sell", "alx_buy", "alx_sell"]
     df = rec.xprints_df(mkt) if hasattr(rec, "xprints_df") else pd.DataFrame()
     key = f"_oflow_{mkt}"
     with rec.lock:
         st_ = getattr(rec, key, None)
-        if st_ is None or st_["n"] > len(df):
-            st_ = {"n": 0, "agg": None, "und": None}
+        if st_ is None or st_["n"] > len(df) or not st_.get("x"):
+            st_ = {"n": 0, "agg": None, "und": None, "x": True}
         n0 = st_["n"]
     info = (getattr(rec, "xinfo", {}) or {}).get(mkt, {})
     if len(df) > n0 and info:
@@ -147,9 +160,14 @@ def xminutes(rec, mkt: str) -> pd.DataFrame:
             sl = ~new["spread_leg"].values.astype(bool)
             m = (ts // 60000) * 60000
             r = XROW[mkt]
+            nm = ~_mid(new)
             a = pd.DataFrame({"m": m, "row": np.floor(S / r) * r,
                               "sl_buy": np.where(sl, np.clip(sd, 0, None), 0.0), "sl_sell": np.where(sl, np.clip(-sd, 0, None), 0.0),
-                              "al_buy": np.clip(sd, 0, None), "al_sell": np.clip(-sd, 0, None)})
+                              "al_buy": np.clip(sd, 0, None), "al_sell": np.clip(-sd, 0, None),
+                              "slx_buy": np.where(sl & nm, np.clip(sd, 0, None), 0.0),
+                              "slx_sell": np.where(sl & nm, np.clip(-sd, 0, None), 0.0),
+                              "alx_buy": np.where(nm, np.clip(sd, 0, None), 0.0),
+                              "alx_sell": np.where(nm, np.clip(-sd, 0, None), 0.0)})
             agg = a if st_["agg"] is None else pd.concat([st_["agg"], a], ignore_index=True)
             st_["agg"] = agg.groupby(["m", "row"], as_index=False, sort=True).sum()
             u = pd.DataFrame({"m": m, "o": S, "h": S, "l": S, "c": S})

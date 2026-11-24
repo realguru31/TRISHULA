@@ -22,7 +22,7 @@ def _rgba(hexc, a):
     return f"rgba({int(h[0:2], 16)},{int(h[2:4], 16)},{int(h[4:6], 16)},{a:.2f})"
 
 
-def _frame(rec, exp, legs):
+def _frame(rec, exp, legs, drop_mid=False):
     a = OF.minutes(rec, exp)
     b = LN.spx_minutes(rec)
     if not len(a) or not len(b):
@@ -30,7 +30,7 @@ def _frame(rec, exp, legs):
     day = pd.Timestamp(now_et().date())
     t0 = int(pd.Timestamp(day + pd.Timedelta("9h30min")).tz_localize(ET).timestamp() * 1000)
     t1 = int(pd.Timestamp(day + pd.Timedelta("16h")).tz_localize(ET).timestamp() * 1000)
-    k = "sl" if legs == "single-leg" else "al"
+    k = ("sl" if legs == "single-leg" else "al") + ("x" if drop_mid else "")
     a = a[(a["m"] >= t0) & (a["m"] < t1)][["m", "row", f"{k}_buy", f"{k}_sell"]].rename(
         columns={f"{k}_buy": "buy", f"{k}_sell": "sell"})
     b = b[(b["m"] >= t0) & (b["m"] < t1)]
@@ -39,7 +39,7 @@ def _frame(rec, exp, legs):
     return a, b
 
 
-def _xframe(rec, mkt, legs):
+def _xframe(rec, mkt, legs, drop_mid=False):
     """v0.40.0: ES / SPY options — same frame, rows and candles from the underlying price at each print."""
     a, b = OF.xminutes(rec, mkt)
     if not len(a) or not len(b):
@@ -47,7 +47,7 @@ def _xframe(rec, mkt, legs):
     day = pd.Timestamp(now_et().date())
     t0 = int(pd.Timestamp(day + pd.Timedelta("9h30min")).tz_localize(ET).timestamp() * 1000)
     t1 = int(pd.Timestamp(day + pd.Timedelta("16h")).tz_localize(ET).timestamp() * 1000)
-    k = "sl" if legs == "single-leg" else "al"
+    k = ("sl" if legs == "single-leg" else "al") + ("x" if drop_mid else "")
     a = a[(a["m"] >= t0) & (a["m"] < t1)][["m", "row", f"{k}_buy", f"{k}_sell"]].rename(
         columns={f"{k}_buy": "buy", f"{k}_sell": "sell"})
     b = b[(b["m"] >= t0) & (b["m"] < t1)].copy()
@@ -262,17 +262,82 @@ def unusual_controls():
                                                format_func=lambda v: "any flag" if v == 1 else "2+ flags") or 1)
     return on, p, tb
 
+
+# ── v0.42.0 fade or follow at the day's extremes ─────────────────────────────────────────────────────────────────────
+def extremes_panel(rec):
+    """Score of the last 15 finished events of each kind (earlier saved days + today) → FADE / FOLLOW / SIT OUT, and
+    today's events for the chart. Cached on the recorder per minute."""
+    from core import extremes as XT
+    from core import lean as LN
+    key = int(now_et().timestamp() // 60)
+    c = getattr(rec, "_xt_cache", None)
+    if c and c[0] == key:
+        return c[1]
+    today = now_et().strftime("%Y-%m-%d")
+    try:
+        d = LN.live_day(rec)
+        ev_t = XT.events(d).assign(day=today) if d else pd.DataFrame()
+    except Exception:                                    # noqa: BLE001
+        ev_t = pd.DataFrame()
+    try:
+        ev_h = XT.history(today)
+    except Exception:                                    # noqa: BLE001
+        ev_h = pd.DataFrame()
+    ev = pd.concat([x for x in (ev_h, ev_t) if len(x)], ignore_index=True) if (len(ev_h) or len(ev_t)) else pd.DataFrame()
+    sc = XT.score(ev) if len(ev) else {"fade": (0, np.nan, np.nan), "follow": (0, np.nan, np.nan), "verdict": "SIT OUT"}
+    out = (sc, ev_t, len(set(ev_h["day"])) if len(ev_h) else 0)
+    try:
+        rec._xt_cache = (key, out)
+    except Exception:                                    # noqa: BLE001
+        pass
+    return out
+
+
+def extremes_caption(sc, ndays):
+    def one(k):
+        n, r, a = sc[k]
+        return f"{k} {n} events · {r:.0%} right · {a:+.1f} pts" if n else f"{k} — no events yet"
+    col = {"FADE": "#ffd400", "FOLLOW": "#26c6da"}.get(sc["verdict"], "#8b949e")
+    return (f"**At the day's highs / lows lately → <span style='color:{col}'>{sc['verdict']}</span>** · last 15 finished "
+            f"events of each kind ({ndays} saved days + today), SPX 30 min later · {one('fade')} · {one('follow')} · "
+            "fade = money leaning against the new high/low · follow = money pushing through it · neither working → sit out")
+
+
+def add_extremes(fig, ev_t, view, a, last=None, rowcol=None):
+    if ev_t is None or not len(ev_t):
+        return
+    kw = rowcol or {}
+    t = pd.Series(pd.to_datetime(ev_t["t"]).values)
+    x = t.values if view == "candles" else _fp_x(t, a, "15min", last)
+    up = ev_t["dir"].values > 0
+    res = ["open" if not np.isfinite(p) else f"{p:+.1f} pts" for p in ev_t["pts"].values]
+    txt = [("FADE" if k == "fade" else "FOLLOW") for k in ev_t["kind"].values]
+    fig.add_scatter(x=x, y=ev_t["px"].values, mode="markers+text", text=txt,
+                    textposition=["bottom center" if u else "top center" for u in up],
+                    textfont=dict(size=10, color="#e6edf3"), showlegend=False,
+                    customdata=np.stack([ev_t["side"].values, np.round(ev_t["lean"].values, 3), res], axis=1),
+                    marker=dict(symbol=np.where(up, "triangle-up", "triangle-down"), size=13,
+                                color=np.where(ev_t["kind"].values == "fade", "#ffd400", "#26c6da"),
+                                line=dict(color="#0b0f14", width=1)),
+                    hovertemplate="new %{customdata[0]} · lean %{customdata[1]} · %{text} · 30 min: %{customdata[2]}"
+                                  "<extra></extra>", **kw)
+
 def render(rec):
     rec = getattr(rec, "_rec", rec)
     st.caption("OrderFlow — options delta at the SPX price where it traded (OFL Delta Map idea with options delta): "
                "customer Δ = aggressor × option delta × size × 100 · blue = deltas bought (calls bought / puts sold) · "
                "magenta = deltas sold · 0DTE · RTH. 18 Nov check: tracks the bar's move (single-leg a bit tighter than "
                "all prints), does NOT predict the next bar — read it for divergences / exhaustion at turns.")
-    c1, c2, c4, c3 = st.columns([1.5, 1.4, 1.4, 3])
+    c1, c2, c5, c4, c3 = st.columns([1.5, 1.4, 1.5, 1.4, 3])
     view = c1.segmented_control("view", ["candles", "footprint"], default="candles", key="of_view",
                                 label_visibility="collapsed") or "candles"
     legs = c2.segmented_control("prints", ["single-leg", "all"], default="single-leg", key="of_legs",
                                 label_visibility="collapsed") or "single-leg"
+    mid = c5.segmented_control("mid prints", ["keep mid", "drop mid"], default="keep mid", key="of_mid",
+                               label_visibility="collapsed",
+                               help="drop mid = ignore prints traded inside the bid/ask (two sides meeting halfway); applies "
+                                    "to the map, footprint and unusual options") or "keep mid"
+    drop_mid = mid == "drop mid"
     span = c4.segmented_control("footprint span", ["last 3h", "full day"], default="last 3h", key="of_span",
                                 label_visibility="collapsed", help="footprint only: 15-min bars; the full day squeezes the "
                                                                   "numbers") or "last 3h"
@@ -284,6 +349,7 @@ def render(rec):
         return
     last = 12 if span == "last 3h" else None
     on, prm, tb = unusual_controls()
+    prm["drop_mid"] = drop_mid
     day = pd.Timestamp(now_et().date())
     sel = None
     tsel = (st.session_state.get("of_tab") or {}).get("selection", {}).get("rows", []) if on else []
@@ -292,12 +358,23 @@ def render(rec):
         r = prev.iloc[tsel[0]]
         sel = (r["mkt"], int(r["_ts"]), float(r["_S"]))
     tabs = []
+    xt = None
+    if st.toggle("fade / follow at highs & lows", key="of_xt", value=False,
+                 help="v0.42.0 (from the 'zero' write-up): at each new session high / low after 10:00, did the last 15 min "
+                      "of single-leg 0DTE money lean AGAINST it (→ fade) or push THROUGH it (→ follow)? Scored on the last "
+                      "15 finished events of each kind from the saved days + today, SPX 30 min later. Neither working → "
+                      "SIT OUT. Collecting — tune once ~20 days are in."):
+        try:
+            xt = extremes_panel(rec)
+            st.markdown(extremes_caption(xt[0], xt[2]), unsafe_allow_html=True)
+        except Exception as e:                           # noqa: BLE001
+            st.caption(f"fade / follow: {type(e).__name__}: {e}")
     for m in (["SPX", "ES", "SPY"] if mkt == "3 stacked" else [mkt]):
         if m == "SPX":
-            a, b = _frame(rec, str(exps[0]), legs)
+            a, b = _frame(rec, str(exps[0]), legs, drop_mid)
             row, lbl = OF.ROW, str(exps[0])
         else:
-            a, b = _xframe(rec, m, legs)
+            a, b = _xframe(rec, m, legs, drop_mid)
             row = OF.XROW[m]
             inf = (getattr(rec, "xinfo", {}) or {}).get(m, {})
             lbl = f"{m} options {inf.get('exp', '')}" + (" · no spread-leg flag on the ES feed" if m == "ES" else "")
@@ -324,6 +401,8 @@ def render(rec):
         if on and g is not None:
             add_marks(fig, g, bu, on, view, a, last=last, sel=sel[1:] if sel and sel[0] == m else None,
                       rowcol=dict(row=1, col=1) if view == "candles" else None)
+        if m == "SPX" and xt is not None:
+            add_extremes(fig, xt[1], view, a, last=last, rowcol=dict(row=1, col=1) if view == "candles" else None)
         st.plotly_chart(fig, width="stretch", key=f"of_{view}_{m}")
     if on:
         t = pd.concat([x for x in tabs if len(x)], ignore_index=True) if any(len(x) for x in tabs) else pd.DataFrame()

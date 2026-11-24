@@ -128,6 +128,8 @@ def detect(f: pd.DataFrame, mkt: str, day: pd.Timestamp, legs: str, on: list, p:
     if legs == "single-leg":
         f = f[f["sl"].values]
     f = f[f["aggr"].values != 0]
+    if p.get("drop_mid"):                                # v0.42.0: ignore prints traded inside the spread
+        f = f[~((f["px"].values > f["bid"].values + 1e-9) & (f["px"].values < f["ask"].values - 1e-9))]
     if not len(f):
         return pd.DataFrame(), pd.DataFrame()
     px, b, a, ag = f["px"].values, f["bid"].values, f["ask"].values, f["aggr"].values

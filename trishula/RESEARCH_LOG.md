@@ -234,3 +234,11 @@ B) Biggest single-leg orders (one contract + side + second merged, top 1 % by de
    bearish flow right 5/5 days) follow the days' drift — 4 of 5 days sold off — so they can't be read as skill.
    AM bought calls going right against a falling tape is the one thing to keep counting (matches the write-up).
 C) Straddle bought on a disconnect at real bid/ask: not testable yet — SPX BB keeps the straddle MID only, 2 days.
+
+## §19 · 24 Nov — fade / follow at the day's extremes (core/extremes.py, settings fixed before scoring except the cut)
+Cut first tried at a fixed |lean| 0.10 → no events (15-min single-leg lean std ≈ 0.04), changed to 0.5 × the lean's own
+std so far today BEFORE looking at results. 10 saved lean days 5–23 Nov: fade 18 events · 39 % right · −4.1 pts at
+30 min; follow 36 · 56 % · +2.4. Walk-forward verdict (last 15 of each kind from earlier days): FOLLOW on 9, 18, 20,
+23 Nov → 14 trades −49 pts; SIT OUT on the rest. No edge yet; shipped as an off-by-default OrderFlow toggle to collect.
+Write-up's own reported results: 1.1 trades/day 55 % won +5.2 % avg (median +12.5 %); 1.6/day 31 % won +9 % avg,
+median −22 % (lottery-shaped). "drop mid" shipped as a toggle; on 5 days it did not tighten the read (§18).
