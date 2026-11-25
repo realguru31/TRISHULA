@@ -71,9 +71,11 @@ def _book_controls():
 SIGNSRC = {"all prints (tape)": "all", "single-leg (tape)": "single-leg", "opening book (pre-open sign × OI)": "opening"}
 
 
-# v0.27.0: Terrain defaults = the settings that matched VS3D on 11–12 Nov; kept across browser reloads (URL params)
-TR_DEFAULTS = {"tr_norm": "Dan (minis, linear ±250 / ±100)", "tr_signed": True, "tr_signsrc": "single-leg (tape)",
-               "tr_wt": "OI + Volume", "tr_vw": 0.05, "tr_book": True, "tr_bookw": 0.35, "tr_simg": False,
+# v0.43.0: Terrain defaults = best match to Dan's 24 Nov 12:47/14:04 charts (3,200-setting sweep, RESEARCH_LOG §21):
+# naive field · book .35 · Vol else OI · vw .25 · Aggregate · Percentile 95 (sign 95/92 %, shape rho .81/.77).
+# Kept across browser reloads (URL params).
+TR_DEFAULTS = {"tr_norm": "Percentile", "tr_signed": False, "tr_signsrc": "single-leg (tape)",
+               "tr_wt": "Vol else OI (legacy)", "tr_vw": 0.25, "tr_book": True, "tr_bookw": 0.35, "tr_simg": False,
                "tr_simc": False, "tr_greek": "Gamma"}
 
 

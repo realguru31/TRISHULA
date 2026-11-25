@@ -3,6 +3,14 @@
 Semantic versioning: MAJOR.MINOR.PATCH. The running version is shown in the app's
 status bar, every tab footer, and the Recorder diagnostics panel.
 
+## v0.43.0 — 2026-11-25 · Terrain defaults = best match to Dan's charts
+
+- Terrain defaults changed to the best of 3,200 settings scored against Dan's 24 Nov 12:47 / 14:04 gamma charts
+  (RESEARCH_LOG §21): Signed field off · long-dated book on, weight 0.35 · weighting "Vol else OI (legacy)" ·
+  volume weight 0.25 · Aggregate · Range "Percentile" 95. Sign agrees 95 % / 92 %, shading correlation 0.81 / 0.77.
+- The old defaults (signed · OI + Volume · vw 0.05 · Dan ±250) saturated the whole field to one colour.
+- Settings you changed earlier are kept in the page URL and still win; open trishula.streamlit.app fresh to get the new defaults.
+
 ## v0.42.7 — 2026-11-24 · TASTIER tab back (v0.42.5 removal undone)
 
 ## v0.42.6 — 2026-11-24 · data copy built on disk, part by part
