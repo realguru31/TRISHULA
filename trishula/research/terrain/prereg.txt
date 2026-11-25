@@ -1,0 +1,8 @@
+Pre-registered 25 Nov 2026 ~09:25 ET, before running (Terrain raw-data edges):
+H1  Dealer gamma at spot (field value at spot, now column) predicts the next-60-min realized range: negative γ (red,
+    amplifying) → larger SPX high−low than positive γ (green, suppressive). Test: every 30 min 10:00–15:00 on every day
+    with chain snapshots, rank-correlation of field-at-spot vs next-60-min range, and red-vs-green mean range.
+H2  Magnet: within the next 60 min SPX moves TOWARD the nearest zero boundary / green pocket edge (in the projected
+    field). Test: sign(boundary − spot) vs sign(SPX change 60 min), % agreement vs 50 %.
+Field settings tested: the best two from the sweep against Dan's 12:47 / 14:04 charts, plus naive OI-opening as control.
+Report both, including failure.

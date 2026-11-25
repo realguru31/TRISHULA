@@ -296,3 +296,25 @@ e) NEW IDEAS (pre-registered 16:55 ET in research/daily/2026-11-24/prereg.txt be
 Verdict: nothing has 15 days; nothing to APPROVE. Keep counting: DT v2 follow (+6 edge, 4/6 d), S1 middle (5/6 d),
 S6, unusual "new positions" (4/6 d), BB disconnect 15-min reversion. Consistently negative: DT initiation / S5 (0/6 d)
 and extremes FADE.
+
+## §21 · 25 Nov — Terrain: EVERY coded setting scored against Dan's 24 Nov charts (12:47 and 14:04 ET)
+Method: Dan's two gamma panels (user screenshots) digitized to a signed intensity on price × time (median-filtered to
+remove candles / lines; calibration checked visually). Our field rebuilt from the 24 Nov 14:00 copy (full tape) at the
+same moments. 3,200 settings per picture = 4 sign sources (naive · signed all-prints · signed single-leg · opening seed)
+× 5 expiry sets (0DTE · 0+1DTE · 0DTE+book .35 · 0DTE+book 1 · 0+1DTE+book .35) × 4 weightings × volume weight
+.05/.25/1 × 2 field modes × 4 colour scales (Dan ±250 · Percentile 95 · Percentile 99 · StdDev) × power .4 / 1.
+Scores: sign agreement where Dan's colour is clear (|v| > .15), whole field and right of "now"; Spearman rank of the
+shading (shape, pockets / dark band). Scripts: research/terrain/.
+• The app's CURRENT settings (signed single-leg · book .35 · OI+Vol · vw .05 · Dan ±250): one flat colour — the Dan
+  ±250 cap saturates every cell (shape undefined). 180 of 3,200 settings are fully saturated (Dan ±250 92, StdDev 88).
+• BEST on both pictures: naive sign · 0DTE + long-dated book .35 (or 1.0) · "Vol else OI (legacy)" · volume weight .25 ·
+  Aggregate · Percentile 95 (or 99): sign agreement 95 % / 92 % (86 % right of now), shape rho .81 / .77 — reproduces
+  the green pocket appearing top-right and growing toward spot by 14:04 (picture: research/terrain render).
+• Sign source: naive beats every signed version (best rho .77 vs .64–.67). Per-strike field mode is worse (.57).
+  Colour scale doesn't change the sign; it decides whether pockets / blobs are visible — Dan ±250 and StdDev often
+  flatten the whole picture, Percentile 95/99 keep them.
+• Two pictures on ONE day: a fit, not proof. Score the same settings on the next screenshots before changing defaults.
+Raw-data tests (pre-registered research/terrain/prereg.txt), 32 checkpoints every 30 min on 5 days with snapshots:
+  H1 γ at spot → next-60-min range: rho +.28 (p .12), within-day +.09 → no. (Best setting is red at spot 31/32 times.)
+  H2 magnet to the nearest zero boundary within 60 min: price moved TOWARD it only 29 % (n 14; control 33 %, n 9) →
+     no magnet; if anything away — too few cases to call. Keep counting.
