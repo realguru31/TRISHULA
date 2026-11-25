@@ -226,13 +226,14 @@ def unusual_controls():
     p = dict(UN.DEF)
     if not on:
         return on, p, None
-    N = [5, 10, 20]
-    fn = lambda v: f"top {v}"                            # noqa: E731
+    R = lambda v: f"1 in {v:,}"                         # noqa: E731
     if "big" in on:
         c = st.columns([1.2, 2, 3, 2])
         c[0].markdown("**big orders**")
-        p["big_n"] = c[1].segmented_control("big n", N, default=10, key="of_big_n", format_func=fn) or 10
-        c[2].caption("by delta notional · prints on one contract, same side, same second = one order")
+        p["big_rare"] = c[1].segmented_control("big rarity", [2000, 5000, 10000, 20000], default=10000, key="of_big_r",
+                                               format_func=R) or 10000
+        c[2].caption("delta notional vs all orders in the same half-hour over the previous sessions · prints on one "
+                     "contract, same side, same second = one order · decided when it prints, never re-ranked")
     if "burst" in on:
         c = st.columns([1.2, 2, 3, 2])
         c[0].markdown("**bursts**")
@@ -240,13 +241,15 @@ def unusual_controls():
                                               format_func=lambda v: f"> {v:g}× median") or 3.0
         p["burst_win"] = c[2].segmented_control("burst median", [15, 30, 60], default=30, key="of_burst_win",
                                                 format_func=lambda v: f"median of {v} min") or 30
-        p["burst_n"] = c[3].segmented_control("burst n", N, default=10, key="of_burst_n", format_func=fn) or 10
+        p["burst_rare"] = c[3].segmented_control("burst rarity", [300, 1000, 3000], default=1000, key="of_burst_r",
+                                                 format_func=R) or 1000
     if "pay" in on:
         c = st.columns([1.2, 2, 3, 2])
         c[0].markdown("**paying up**")
-        p["pay_mode"] = c[1].segmented_control("pay mode", ["at or through", "through only"], default="at or through",
-                                               key="of_pay_mode") or "at or through"
-        p["pay_n"] = c[2].segmented_control("pay n", N, default=10, key="of_pay_n", format_func=fn) or 10
+        p["pay_rare"] = c[1].segmented_control("pay rarity", [300, 1000, 3000], default=1000, key="of_pay_r",
+                                               format_func=R) or 1000
+        c[2].caption("bought ABOVE the ask / sold BELOW the bid only (at-the-quote prints are ~80 % of all orders), "
+                     "sized vs such orders in the same half-hour over the previous sessions")
     if "new" in on:
         c = st.columns([1.2, 2, 3, 2])
         c[0].markdown("**new positions**")
@@ -254,10 +257,9 @@ def unusual_controls():
                                                 format_func=lambda v: f"volume ≥ {v:g}× OI") or 1.0
         p["new_min_oi"] = c[2].segmented_control("new min oi", [50, 100, 500, 1000], default=100, key="of_new_min_oi",
                                                  format_func=lambda v: f"OI ≥ {v:,}") or 100
-        p["new_n"] = c[3].segmented_control("new n", N, default=10, key="of_new_n", format_func=fn) or 10
     p["drop_cross"] = st.toggle("drop crosses / blocks at mid", value=True, key="of_cross",
-                                help="a print at the middle of the bid/ask AND in the day's top 0.5 % by size (≥ 50 "
-                                     "contracts) is usually a negotiated cross or hedge, not someone paying up")
+                                help="a print at the middle of the bid/ask AND in the top 0.5 % by size for its half-hour "
+                                     "(previous sessions, ≥ 50 contracts) is usually a negotiated cross or hedge")
     c = st.columns([1.2, 2, 3, 2])
     c[0].markdown("**table**")
     tb = dict(n=c[1].segmented_control("rows", [20, 50, 100], default=20, key="of_tab_n",
@@ -451,6 +453,13 @@ def render(rec):
                         f"{LBL[k]} {(len(bu) if k == 'burst' else int(g[k].sum())):,}" for k in on)
             except Exception as e:                       # noqa: BLE001
                 st.caption(f"unusual: {type(e).__name__}: {e}")
+        if on:
+            try:
+                sl_ = UN.status_line(m, str(day.date()), on, legs, prm)
+                if sl_:
+                    st.caption(sl_)
+            except Exception:                            # noqa: BLE001
+                pass
         if m == "SPX":
             try:
                 nb = noise_box(OF.minutes(rec, str(exps[0])), float(b["c"].iloc[-1]))

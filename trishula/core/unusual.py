@@ -1,25 +1,45 @@
-"""v0.41.0 OrderFlow · unusual options (SPX / ES / SPY), each flag on its own toggle.
+"""v0.44.0 OrderFlow · unusual options (SPX / ES / SPY), each flag on its own toggle. NO REPAINT.
 
 ORDERS, not prints: prints on the same contract, same side, same second are one order (a 500-lot fills as 50–70
 prints). Size that matters = delta notional (|Δ| × contracts × multiplier × underlying), Δ from the order's own price.
 
-1 big orders     the top N orders of the day so far by delta notional (top-N adapts by itself — no fixed size).
-2 bursts         a strike (C+P) trading > k × its own rolling median minute (prior `win` min, zeros included) and
-                 > k × the market's typical busy strike-minute; the top N by that multiple.
-3 paying up      orders that bought at/through the ask or sold at/through the bid (or through only); top N by delta notional.
-4 new positions  a contract's volume today (whole session, all prints) reaching ratio × its prior-close open
-                 interest (OI ≥ min_oi) — the order that crossed, coloured by the side that traded more up to it; top N by OI.
+Every flag is decided the moment the order prints, against a cut-off taken from the PREVIOUS sessions for the same
+half-hour of the day (09:30, 10:00 … 15:30), so a flag never appears or disappears later (v0.41–0.43 ranked the
+whole day so far → early flags vanished as bigger ones came, and a replay showed only the day's eventual top N).
+
+1 big orders     delta notional ≥ the 1-in-N cut-off of all orders in this half-hour over the last 10 sessions.
+2 bursts         a strike (C+P) trading > k × its own rolling median minute (prior `win` min) and > k × the market's
+                 typical busy strike-minute, AND its multiple ≥ the 1-in-N cut-off of strike-minutes in this half-hour.
+3 paying up      orders that traded strictly THROUGH the quote (bought above the ask / sold below the bid) with delta
+                 notional ≥ the 1-in-N cut-off of such orders in this half-hour (at-the-quote prints are ~80 % of all
+                 orders — they are how the side is labelled, not urgency).
+4 new positions  a contract's volume today (whole session, all prints) reaching ratio × its prior-close open interest
+                 (OI ≥ min_oi) — the order that crossed, coloured by the side that traded more up to it.
+drop crosses     a print at mid with size ≥ the 99.5th percentile of print sizes in this half-hour (previous sessions,
+                 ≥ 50 contracts) is a negotiated cross / hedge, not someone paying up.
+
+Baseline: one small JSON per market and day (order counts + the top 400 values per half-hour), written after the
+close by the recorder (unusual/<day>_<mkt>.json on the state branch), seeded from the saved days in core/data/unusual.
+Score: the same file holds what each flag did that day (SPX/ES/SPY 20 min later in the flag's direction, vs all
+orders that day in the same direction) → the running score shown next to each flag.
 
 Colour everywhere: blue = bullish (calls bought / puts sold), magenta = bearish (puts bought / calls sold)."""
 from __future__ import annotations
+
+import math
+import os
+import json
+import time
 
 import numpy as np
 import pandas as pd
 
 MULT = {"SPX": 100.0, "ES": 50.0, "SPY": 100.0}
-DEF = dict(big_n=10, burst_k=3.0, burst_win=30, burst_n=10, pay_mode="at or through", pay_n=10,
-           new_ratio=1.0, new_min_oi=100, new_n=10)
+DEF = dict(big_rare=10000, pay_rare=1000, burst_k=3.0, burst_win=30, burst_rare=1000,
+           new_ratio=1.0, new_min_oi=100, drop_cross=True)
 FLAGS = ["big", "burst", "pay", "new"]
+NB, TOPK, NDAYS, FWD, MIN_DAYS = 13, 400, 10, 20, 3
+SEED_DIR = os.path.join(os.path.dirname(__file__), "data", "unusual")
 
 
 def _spx_frame(rec, exp: str) -> pd.DataFrame:
@@ -86,14 +106,17 @@ def frame(rec, mkt: str, exp: str) -> pd.DataFrame:
 
 
 def result(rec, mkt: str, exp: str, day, legs: str, on: list, p: dict, x_exp: str = ""):
-    """v0.41.2: (flagged orders only, bursts), cached on the store size + settings — a few hundred rows, not the tape."""
+    """v0.44.0: flags against the previous sessions (cuts). v0.41.2: (flagged orders only, bursts), cached on the store size + settings — a few hundred rows, not the tape."""
     n = len(rec._all_prints()) if mkt == "SPX" else len(rec.xprints_df(mkt)) if hasattr(rec, "xprints_df") else 0
-    key = (mkt, exp, x_exp, str(day), n, len(getattr(rec, "oi", {}) or {}), legs, tuple(on), tuple(sorted(p.items())))
+    hist = history(mkt, str(pd.Timestamp(day).date()))
+    cut = cuts(hist, legs, p)
+    key = (mkt, exp, x_exp, str(day), n, len(getattr(rec, "oi", {}) or {}), legs, tuple(on), tuple(sorted(p.items())),
+           len(hist), tuple(d.get("day") for d in hist))
     c = getattr(rec, "_unu_res", {}) or {}
     if mkt in c and c[mkt][0] == key:
         return c[mkt][1]
     f = frame(rec, mkt, exp)
-    g, bu = detect(f, mkt, day, legs, on, p, exp=x_exp)
+    g, bu = detect(f, mkt, day, legs, on, p, exp=x_exp, cut=cut)
     del f
     if len(g):
         g = g[g[[k for k in FLAGS if k in g]].any(axis=1)].copy()
@@ -106,18 +129,25 @@ def result(rec, mkt: str, exp: str, day, legs: str, on: list, p: dict, x_exp: st
     return g, bu
 
 
-def detect(f: pd.DataFrame, mkt: str, day: pd.Timestamp, legs: str, on: list, p: dict, exp: str = ""):
-    """→ (orders with flag columns, bursts frame) for RTH of `day`. Only flags in `on` are computed."""
+def _t0(day) -> int:
     from .timeutil import ET
-    from .orderflow import implied_delta
-    t0 = int(pd.Timestamp(day + pd.Timedelta("9h30min")).tz_localize(ET).timestamp() * 1000)
-    t1 = int(pd.Timestamp(day + pd.Timedelta("16h")).tz_localize(ET).timestamp() * 1000)
-    if not len(f):
-        return pd.DataFrame(), pd.DataFrame()
+    return int(pd.Timestamp(pd.Timestamp(day).normalize() + pd.Timedelta("9h30min")).tz_localize(ET).timestamp() * 1000)
+
+
+def _bk(ts_ms, t0):
+    return np.clip(((np.asarray(ts_ms, "int64") - t0) // 60000) // 30, 0, NB - 1).astype(int)
+
+
+def _prep(f: pd.DataFrame, day, legs: str, p: dict, new_on: bool, cross_cut=None):
+    """RTH prints of `day` with side / bull / paid-through / new-position columns; crosses dropped against the
+    previous sessions' size cut-off of the same half-hour (never against today's own distribution)."""
+    t0 = _t0(day)
+    t1 = t0 + int(6.5 * 3600 * 1000)
     f = f.copy()
     f["bull"] = np.sign(f["aggr"].values) * np.sign(f["cp"].values)
     f["new"] = False
-    if "new" in on:                                      # whole session (incl. overnight), all prints
+    f["new_bull"] = 0.0
+    if new_on:                                           # whole session (incl. overnight), all prints — causal
         oi = f["oi"].values
         cum = f.groupby("sym", observed=True)["size"].cumsum().values
         lim = p["new_ratio"] * oi
@@ -128,63 +158,112 @@ def detect(f: pd.DataFrame, mkt: str, day: pd.Timestamp, legs: str, on: list, p:
     if legs == "single-leg":
         f = f[f["sl"].values]
     f = f[f["aggr"].values != 0]
-    if p.get("drop_cross") and len(f):                  # v0.42.1: crosses / negotiated blocks (zero: "giant blocks are
-        px_, b_, a_ = f["px"].values, f["bid"].values, f["ask"].values   # often crosses or hedges")
+    if p.get("drop_cross") and len(f) and cross_cut is not None:
+        px_, b_, a_ = f["px"].values, f["bid"].values, f["ask"].values
         at_mid = np.abs(px_ - (a_ + b_) / 2) <= np.maximum((a_ - b_) * 0.1, 0.0001)
-        big = f["size"].values >= max(float(np.nanpercentile(f["size"].values, 99.5)), 50.0)
-        f = f[~(at_mid & big)]
+        cut = np.nan_to_num(np.asarray(cross_cut, float)[_bk(f["ts_ms"].values, t0)], nan=np.inf)
+        f = f[~(at_mid & (f["size"].values >= np.maximum(cut, 50.0)))]
     if p.get("drop_mid"):                                # v0.42.0: ignore prints traded inside the spread
         f = f[~((f["px"].values > f["bid"].values + 1e-9) & (f["px"].values < f["ask"].values - 1e-9))]
-    if not len(f):
-        return pd.DataFrame(), pd.DataFrame()
-    px, b, a, ag = f["px"].values, f["bid"].values, f["ask"].values, f["aggr"].values
-    if p.get("pay_mode") == "through only":
-        f["paid"] = ((ag > 0) & (px > a + 1e-9)) | ((ag < 0) & (px < b - 1e-9))
-    else:
-        f["paid"] = ((ag > 0) & (px >= a - 1e-9)) | ((ag < 0) & (px <= b + 1e-9))
-    f["side"] = np.sign(ag)
-    f["sec"] = f["ts_ms"].values // 1000
-    f["pv"] = px * f["size"].values
-    if "new_bull" not in f:
-        f["new_bull"] = 0.0
+    if len(f):
+        px, b, a, ag = f["px"].values, f["bid"].values, f["ask"].values, f["aggr"].values
+        f["paid"] = ((ag > 0) & (px > a + 1e-9)) | ((ag < 0) & (px < b - 1e-9))     # strictly THROUGH the quote
+        f["side"] = np.sign(ag)
+        f["sec"] = f["ts_ms"].values // 1000
+        f["pv"] = px * f["size"].values
+    return f, t0
+
+
+def _orders(f: pd.DataFrame, mkt: str, day, exp: str = "") -> pd.DataFrame:
+    from .timeutil import ET
+    from .orderflow import implied_delta
     g = f.groupby([f["sym"].astype(str).values, f["side"].values, f["sec"].values], sort=False)
     o = g.agg(ts_ms=("ts_ms", "first"), sym=("sym", "first"), strike=("strike", "first"), cp=("cp", "first"),
               aggr=("side", "first"), size=("size", "sum"), pv=("pv", "sum"), S=("S", "first"), n=("px", "size"),
               paid=("paid", "max"), new=("new", "max"), oi=("oi", "first"), new_bull=("new_bull", "last"), bull=("bull", "first"))
     o = o.reset_index(drop=True)
     o["px"] = o["pv"] / o["size"].clip(lower=1)
-    end = pd.Timestamp(f"{exp or day.date()} 16:00").tz_localize(ET).value // 10**6
+    end = pd.Timestamp(f"{exp or pd.Timestamp(day).date()} 16:00").tz_localize(ET).value // 10**6
     T = np.maximum(end - o["ts_ms"].values, 60_000) / (365.25 * 86400e3)
     o["d"] = implied_delta(o["px"].values, o["S"].values, o["strike"].values, T, o["cp"].values)
     o["mult"] = MULT[mkt]
     o["prem"] = o["pv"] * o["mult"]
     o["dn"] = o["d"] * o["size"] * o["mult"] * o["S"]
-    o = o.sort_values("ts_ms", kind="stable").reset_index(drop=True)
+    return o.sort_values("ts_ms", kind="stable").reset_index(drop=True)
+
+
+def _strike_minutes(f: pd.DataFrame, t0: int, k: float, win: int):
+    """per strike-minute: volume, bull volume, multiple vs own rolling median (prior `win` min), and the gate
+    (> k × own median and > k × the market's typical busy strike-minute). All look-back only."""
+    m = (f["ts_ms"].values - t0) // 60000
+    V = pd.DataFrame({"m": m, "k": f["strike"].values, "v": f["size"].values,
+                      "b": f["bull"].values * f["size"].values, "S": f["S"].values})
+    A = V.groupby(["m", "k"]).agg(v=("v", "sum"), b=("b", "sum"), S=("S", "mean")).reset_index()
+    P = A.pivot(index="m", columns="k", values="v").reindex(range(int(A["m"].max()) + 1)).fillna(0.0)
+    med = P.rolling(win, min_periods=min(5, win)).median().shift(1)
+    busy = P.where(P > 0).stack().dropna().groupby(level=0).median().reindex(P.index).expanding().median().shift(1)
+    R = P / med.clip(lower=1.0)
+    ok = (P > k * med) & (P.gt(k * busy, axis=0)) & (P > 0)
+    return A, P, med, R, ok
+
+
+def cuts(hist: list, legs: str, p: dict) -> dict | None:
+    """Pool the previous sessions' half-hour tails → the cut-off of each flag per half-hour (NaN = no data)."""
+    if len(hist or []) < MIN_DAYS:
+        return None
+    L = "sl" if legs == "single-leg" else "al"
+
+    def pool(key, rare):
+        out = np.full(NB, np.nan)
+        for b in range(NB):
+            n = 0
+            vals = []
+            for d in hist:
+                x = (d.get(L) or {}).get(key)
+                if not x:
+                    continue
+                n += int(x[b][0])
+                vals += x[b][1]
+            if n and vals:
+                v = np.sort(np.asarray(vals, float))[::-1]
+                out[b] = v[min(max(1, math.ceil(n / float(rare))), len(v)) - 1]
+        return out
+    cr = np.full(NB, np.nan)
+    for b in range(NB):
+        xs = [(d.get(L) or {}).get("cross", [None] * NB)[b] for d in hist]
+        xs = [x for x in xs if x is not None]
+        if xs:
+            cr[b] = float(np.median(xs))
+    return dict(big=pool("dn", p["big_rare"]), pay=pool("pay", p["pay_rare"]), burst=pool("R", p["burst_rare"]),
+                cross=cr, n=len(hist))
+
+
+def detect(f: pd.DataFrame, mkt: str, day: pd.Timestamp, legs: str, on: list, p: dict, exp: str = "", cut: dict | None = None):
+    """→ (orders with flag columns, bursts frame) for RTH of `day`. Only flags in `on` are computed. `cut` = cuts()
+    from the previous sessions; without it big / paying up / bursts stay off (nothing to compare with yet)."""
+    if not len(f):
+        return pd.DataFrame(), pd.DataFrame()
+    f, t0 = _prep(f, day, legs, p, "new" in on, cut["cross"] if cut else None)
+    if not len(f):
+        return pd.DataFrame(), pd.DataFrame()
+    o = _orders(f, mkt, day, exp)
+    ob = _bk(o["ts_ms"].values, t0)
     for k in ("big", "burst", "pay"):
         o[k] = False
-    if "big" in on:
-        o.loc[o["dn"].nlargest(int(p["big_n"])).index, "big"] = True
-    if "new" in on:                                      # the N biggest positions opened (largest OI crossed)
-        keep = o.loc[o["new"], "oi"].nlargest(int(p["new_n"])).index
+    if "new" not in on:
         o["new"] = False
-        o.loc[keep, "new"] = True
-    if "pay" in on:
-        o.loc[o.loc[o["paid"], "dn"].nlargest(int(p["pay_n"])).index, "pay"] = True
+    if cut is not None:
+        if "big" in on:
+            o["big"] = o["dn"].values >= np.nan_to_num(cut["big"][ob], nan=np.inf)
+        if "pay" in on:
+            o["pay"] = o["paid"].values & (o["dn"].values >= np.nan_to_num(cut["pay"][ob], nan=np.inf))
     bursts = pd.DataFrame()
-    if "burst" in on:
-        m = (f["ts_ms"].values - t0) // 60000
-        V = pd.DataFrame({"m": m, "k": f["strike"].values, "v": f["size"].values,
-                          "b": f["bull"].values * f["size"].values, "S": f["S"].values})
-        A = V.groupby(["m", "k"]).agg(v=("v", "sum"), b=("b", "sum"), S=("S", "mean")).reset_index()
-        P = A.pivot(index="m", columns="k", values="v").reindex(range(int(A["m"].max()) + 1)).fillna(0.0)
-        w = int(p["burst_win"])
-        med = P.rolling(w, min_periods=min(5, w)).median().shift(1)
-        busy = P.where(P > 0).stack().dropna().groupby(level=0).median().reindex(P.index).expanding().median().shift(1)
-        R = P / med.clip(lower=1.0)
-        ok = (P > p["burst_k"] * med) & (P.gt(p["burst_k"] * busy, axis=0)) & (P > 0)
+    if "burst" in on and cut is not None:
+        A, P, med, R, ok = _strike_minutes(f, t0, float(p["burst_k"]), int(p["burst_win"]))
+        rc = pd.Series(np.nan_to_num(cut["burst"], nan=np.inf)[np.clip(P.index.values // 30, 0, NB - 1)], index=P.index)
+        ok = ok & R.ge(rc, axis=0)
         r = R.where(ok).stack().dropna()
         if len(r):
-            r = r.nlargest(int(p["burst_n"]))
             bursts = A.set_index(["m", "k"]).loc[r.index].reset_index()
             bursts["med"] = [med.at[mm, kk] for mm, kk in zip(bursts["m"], bursts["k"])]
             bursts["ts_ms"] = t0 + bursts["m"] * 60000
@@ -195,6 +274,144 @@ def detect(f: pd.DataFrame, mkt: str, day: pd.Timestamp, legs: str, on: list, p:
                 top = o[inb].assign(_m=om[inb]).sort_values("dn").groupby(["_m", "strike"]).tail(1).index
                 o.loc[top, "burst"] = True
     return o, bursts
+
+
+# ── baseline + score: one small file per market and day ─────────────────────────────────────────────────────────────
+def _tail(vals, b, mask=None):
+    out = []
+    for i in range(NB):
+        m = (b == i) if mask is None else ((b == i) & mask)
+        v = vals[m]
+        out.append([int(m.sum()), [round(float(x), 2) for x in np.sort(v)[::-1][:TOPK]]])
+    return out
+
+
+def summary(f: pd.DataFrame, mkt: str, day, exp: str = "", hist: list | None = None) -> dict:
+    """One day → its half-hour tails (for future cut-offs) + what each flag did today at default settings, judged
+    against the PREVIOUS sessions only (`hist`)."""
+    out = {"day": str(pd.Timestamp(day).date()), "mkt": mkt, "v": 1}
+    for legs, L in (("single-leg", "sl"), ("all", "al")):
+        p = dict(DEF, drop_mid=False)
+        g, t0 = _prep(f, day, legs, p, False, None)
+        if not len(g):
+            continue
+        sz = g["size"].values
+        gb = _bk(g["ts_ms"].values, t0)
+        cross = [float(np.percentile(sz[gb == i], 99.5)) if (gb == i).sum() >= 200 else None for i in range(NB)]
+        cut = cuts(hist or [], legs, p)
+        g2, _ = _prep(f, day, legs, p, False, cut["cross"] if cut else None)
+        o = _orders(g2, mkt, day, exp)
+        ob = _bk(o["ts_ms"].values, t0)
+        A, P, med, R, ok = _strike_minutes(g2, t0, float(p["burst_k"]), int(p["burst_win"]))
+        Rs = R.where(P > 0).stack().dropna()
+        rb = np.clip(Rs.index.get_level_values(0).values // 30, 0, NB - 1)
+        out[L] = {"dn": _tail(o["dn"].values, ob), "pay": _tail(o["dn"].values, ob, o["paid"].values),
+                  "R": _tail(Rs.values, rb), "cross": cross}
+        if legs == "single-leg":
+            out["score"] = _score(f, mkt, day, exp, hist or [])
+    return out
+
+
+def _score(f, mkt, day, exp, hist):
+    """What each flag did today (default settings): underlying FWD min later × the flag's direction, minus the same
+    for all orders today in that direction (removes the day's drift)."""
+    p = dict(DEF, drop_mid=False)
+    cut = cuts(hist, "single-leg", p)
+    if cut is None:
+        return {}
+    o, bu = detect(f, mkt, day, "single-leg", FLAGS, p, exp=exp, cut=cut)
+    if not len(o):
+        return {}
+    t0 = _t0(day)
+    m = ((o["ts_ms"].values - t0) // 60000).astype(int)
+    S = pd.Series(o["S"].values, index=m).groupby(level=0).median().reindex(range(0, 391)).ffill()
+    fw = S.reindex(m + FWD).values - S.reindex(m).values
+    d = np.where(o["bull"].values > 0, 1.0, -1.0)
+    base = {s: np.nanmean(fw[d == s]) for s in (1.0, -1.0)}
+    res = {}
+    for k in FLAGS:
+        if k == "burst":
+            if not len(bu):
+                res[k] = {"n": 0}
+                continue
+            mm = bu["m"].values.astype(int)
+            dd = np.where(bu["b"].values > 0, 1.0, -1.0)
+            mv = (S.reindex(mm + FWD).values - S.reindex(mm).values) * dd - np.array([base[x] * x for x in dd])
+        else:
+            sel = o[k].values.astype(bool)
+            dd = (np.where(o["new_bull"].values > 0, 1.0, -1.0) if k == "new" else d)[sel]
+            mv = fw[sel] * dd - np.array([base[x] * x for x in dd])
+        mv = mv[np.isfinite(mv)]
+        res[k] = {"n": int(len(mv)), "edge": round(float(mv.mean()), 2) if len(mv) else None,
+                  "hit": round(float((mv > 0).mean()), 3) if len(mv) else None}
+    return res
+
+
+_hist_cache: dict = {}
+
+
+def history(mkt: str, today: str, n: int = NDAYS) -> list:
+    """The last `n` sessions before `today` for `mkt`: state branch (written after each close) + the shipped seed."""
+    key = (mkt, today)
+    c = _hist_cache.get(key)
+    if c is not None and time.time() - c[0] < 3600:
+        return c[1]
+    days: dict = {}
+    try:
+        for fn in sorted(os.listdir(SEED_DIR)):
+            if fn.endswith(f"_{mkt}.json") and fn[:10] < today:
+                days[fn[:10]] = json.load(open(os.path.join(SEED_DIR, fn)))
+    except Exception:                                    # noqa: BLE001
+        pass
+    try:
+        from . import state as ST
+        names = [x for x in ST.list_dir("unusual") if x.endswith(f"_{mkt}.json") and x[:10] < today]
+        for x in sorted(names)[-n:]:
+            if x[:10] not in days or days[x[:10]].get("src") != "state":
+                j = ST.read_file(f"unusual/{x}")
+                if j:
+                    j["src"] = "state"
+                    days[x[:10]] = j
+    except Exception:                                    # noqa: BLE001
+        pass
+    out = [days[k] for k in sorted(days)[-n:]]
+    _hist_cache[key] = (time.time(), out)
+    return out
+
+
+def running_score(hist: list) -> dict:
+    """{flag: (sessions with ≥3 flags, sessions positive, total n, mean of daily edges, pooled hit)}"""
+    res = {}
+    for k in FLAGS:
+        rows = [d["score"][k] for d in hist if (d.get("score") or {}).get(k, {}).get("n", 0) >= 3]
+        if not rows:
+            res[k] = None
+            continue
+        n = sum(r["n"] for r in rows)
+        res[k] = (len(rows), sum(1 for r in rows if (r["edge"] or 0) > 0), n,
+                  float(np.mean([r["edge"] for r in rows])), float(sum(r["hit"] * r["n"] for r in rows) / n))
+    return res
+
+
+def save_day(rec, day: str) -> list:
+    """After the close (recorder thread): write today's baseline + score for SPX / ES / SPY to the state branch."""
+    from . import state as ST
+    done = []
+    exp = str(rec.exps[0]) if getattr(rec, "exps", None) else day
+    for mkt in ("SPX", "ES", "SPY"):
+        try:
+            f = frame(rec, mkt, exp)
+            if not len(f):
+                continue
+            xe = exp if mkt == "SPX" else (getattr(rec, "xinfo", {}) or {}).get(mkt, {}).get("exp", "")
+            j = summary(f, mkt, pd.Timestamp(day), exp=xe, hist=history(mkt, day))
+            del f
+            ST.save_file(f"unusual/{day}_{mkt}.json", j, f"unusual baseline {day} {mkt}", wait=True)
+            done.append(mkt)
+        except Exception:                                # noqa: BLE001
+            continue
+    _hist_cache.clear()
+    return done
 
 
 def table(f: pd.DataFrame, on: list, mkt: str, n: int, sort: str, min_flags: int) -> pd.DataFrame:
@@ -220,3 +437,26 @@ def table(f: pd.DataFrame, on: list, mkt: str, n: int, sort: str, min_flags: int
         "vs spot": (t["strike"] - t["S"]).round(1).values,
         "flags": [" · ".join(lab[k] for k in on if r[k]) for _, r in t[on].iterrows()],
         "_ts": t["ts_ms"].values, "_S": t["S"].values})
+
+
+_LB = {"big": "big orders", "burst": "bursts", "pay": "paying up", "new": "new positions"}
+
+
+def status_line(mkt: str, today: str, on: list, legs: str, p: dict) -> str:
+    """Baseline state + each switched-on flag's running score (what it did over the previous sessions)."""
+    hist = history(mkt, today)
+    if not on:
+        return ""
+    head = f"{mkt} baseline: {len(hist)} previous session(s)"
+    if cuts(hist, legs, p) is None:
+        return (head + f" — big / paying up / bursts start once {MIN_DAYS} are saved (new positions works now)")
+    rs = running_score(hist)
+    parts = []
+    for k in on:
+        r = rs.get(k)
+        if r is None:
+            parts.append(f"{_LB[k]}: no score yet")
+        else:
+            nd, pos, n, e, h = r
+            parts.append(f"{_LB[k]}: {e:+.1f} pts / {FWD} min vs all orders · {pos}/{nd} sessions + · {h:.0%} right · n {n}")
+    return head + " · track record (default settings, single-leg; + = went the flag's way): " + " │ ".join(parts)

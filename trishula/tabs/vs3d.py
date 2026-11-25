@@ -161,7 +161,7 @@ def _terrain_controls():
         c.slider("Field opacity", 0.15, 1.0, 0.38, 0.01, key="tr_alpha")
         c.slider("Saturation (cap ×)", 0.05, 1.0, 1.0, 0.05, key="tr_sat")
         c.checkbox("Contours (zero + ridges/troughs)", True, key="tr_cont")
-        c.checkbox("Gamma pockets (cavity + red core)", True, key="tr_rings")
+        c.checkbox("Gamma pockets (cavity + red core)", False, key="tr_rings")   # v0.44.0: off — hid the field
         c.slider("Pockets to show", 1, 6, 3, 1, key="tr_nblob")
         d.checkbox("Straddle bounds", False, key="tr_strad")
         d.checkbox("Dealer levels overlay (Pinak)", False, key="tr_lvls")
@@ -186,7 +186,7 @@ def _terrain_opts(spot, ctl, canonical=False):
              norm=ss.get("tr_norm", TR_DEFAULTS["tr_norm"]), pct=ss.get("tr_pct", 95),
              intensity=ss.get("tr_int", "Power"), power=float(ss.get("tr_pow", 0.40)),
              alpha=float(ss.get("tr_alpha", 0.38)), sat=float(ss.get("tr_sat", 1.0)),
-             contours=ss.get("tr_cont", True), pockets=ss.get("tr_rings", True), nblob=ss.get("tr_nblob", 3),
+             contours=ss.get("tr_cont", True), pockets=ss.get("tr_rings", False), nblob=ss.get("tr_nblob", 3),
              strad=ss.get("tr_strad", False), levels=ss.get("tr_lvls", False), voladj=ss.get("tr_voladj", "0%"),
              simg=ss.get("tr_simg", TR_DEFAULTS["tr_simg"]), simc=ss.get("tr_simc", TR_DEFAULTS["tr_simc"]), charm2=ss.get("tr_charm2", True),
              fieldmode=ss.get("tr_fieldmode", T.FIELD_MODES[0]), signed=ss.get("tr_signed", TR_DEFAULTS["tr_signed"]),

@@ -3,6 +3,22 @@
 Semantic versioning: MAJOR.MINOR.PATCH. The running version is shown in the app's
 status bar, every tab footer, and the Recorder diagnostics panel.
 
+## v0.44.0 — 2026-11-25 · unusual options: no repaint (flags vs previous sessions) + track record · pockets off
+
+- OrderFlow unusual flags no longer rank the day so far (top N repainted: early flags vanished as bigger orders came,
+  a replay showed only the day's eventual top N). Each order is decided when it prints, against the cut-off of the
+  same half-hour (09:30 … 15:30) over the previous 10 sessions:
+  big orders = 1 in N orders by delta notional (default 1 in 10,000) · paying up = strictly THROUGH the quote (at-the-
+  quote prints are ~80 % of all orders) and 1 in N of those (default 1,000) · bursts = the old k × median gates plus
+  1 in N strike-minutes (default 1,000) · new positions unchanged but no top-N · drop crosses = at mid and in the top
+  0.5 % of print sizes for the half-hour from previous sessions (was today's whole-day percentile).
+- Baseline: core/data/unusual/<day>_<mkt>.json (seed from 12–24 Nov) + one file per market written after each close by
+  the recorder to unusual/ on the state branch. Fewer than 3 sessions → big / paying up / bursts stay off and say so.
+- Track record next to the flags: what each flag did in the previous sessions (default settings, single-leg) — SPX /
+  ES / SPY 20 min later in the flag's direction vs all orders that day in the same direction, sessions positive, hit rate.
+- Test: flags up to 11:00 are identical when the day is recomputed at 15:00 (tests/test_core.py).
+- Terrain: "Gamma pockets" off by default (the overlay covered the whole field on a one-sided day).
+
 ## v0.43.0 — 2026-11-25 · Terrain defaults = best match to Dan's charts
 
 - Terrain defaults changed to the best of 3,200 settings scored against Dan's 24 Nov 12:47 / 14:04 gamma charts

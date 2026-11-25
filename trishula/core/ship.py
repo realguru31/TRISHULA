@@ -288,6 +288,13 @@ class AutoShip:
                                     _drop_intraday(today, name)
                                 except Exception:        # noqa: BLE001
                                     pass
+                                if (today, "unusual") not in done:     # v0.44.0: unusual-flag baseline + score
+                                    try:
+                                        from . import unusual as UN
+                                        if UN.save_day(self.rec, today):
+                                            done.add((today, "unusual"))
+                                    except Exception:    # noqa: BLE001
+                                        pass
                             _note(today, label, True, status.get("last") or name)
                         except Exception as e:           # noqa: BLE001 — retried next minute inside the window
                             _note(today, label, False, f"{type(e).__name__}: {e}")
