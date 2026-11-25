@@ -318,3 +318,38 @@ Raw-data tests (pre-registered research/terrain/prereg.txt), 32 checkpoints ever
   H1 γ at spot → next-60-min range: rho +.28 (p .12), within-day +.09 → no. (Best setting is red at spot 31/32 times.)
   H2 magnet to the nearest zero boundary within 60 min: price moved TOWARD it only 29 % (n 14; control 33 %, n 9) →
      no magnet; if anything away — too few cases to call. Keep counting.
+
+## §22 — 25 Nov: Terrain shape vs Dan 10:22 · max/min lines as reversal points (H3) · order flow by type · unusual flags no-repaint
+
+**Terrain vs Dan's 10:22 gamma chart (today, 12:00 copy, 400 settings, research/terrain/sweep1125.py).** Dan: field red
+everywhere (−γ), local-MIN (cyan) line at spot: 6991 at 10:45 → 6981 at 12:00–12:37 → 6998 at 13:53 → 7017 at 15:08 →
+7001 at 15:45; zero blobs at ~7085–7110 from ~13:00 and ~6960–6990 late.
+- Current default (naive · 0DTE+book .35 · Vol-else-OI vw .25 · Aggregate · P95): sign 100 % but shape rho 0.10, min
+  line at 6947–6955 (≈ 36 pts below his), on only 33 % of columns. Yesterday's best does NOT hold today.
+- Best shape: signed single-leg · 0DTE+book .35 · OI (opening book) · Aggregate — rho 0.42, sign 100 %, min line within
+  ~10 pts on 58 % of columns. Best line match (Aggregate): opening-book sign · 0DTE+book .35 · OI+Volume vw .05 — line
+  within 6 pts on 100 % of columns but rho 0.21. Per-strike fields put the min line on the 7000 strike (6–7 pts) but
+  shape rho ≤ 0.30. Note: in the naive field the book weight does nothing (naive ignores dsign) → book .35 = book 1.
+- Verdict: the best setting moves day to day (24 Nov naive, 25 Nov signed single-leg / opening book) → no default change;
+  tracked daily by shape AND line location.
+- Pockets overlay (red core + cavity) covered the whole field on a one-sided day → v0.44.0 turns it off by default.
+
+**H3 max/min lines as reversal points (pre-registered 10:40, research/mm/prereg.txt).** In-sample 12–24 Nov: gamma lines
+sit 55–73 pts from spot (median), 11 touches in 6 days, 4 after dedupe — too few; Delta Change: 8 lines, 0 touches;
+Charm: 19 MIN touches, 8 after dedupe, 1 reversal vs 45 % for flat levels (3 days). Out of sample 25 Nov (to 12:00):
+gamma 0 touches (lines ~72 pts away), delta none, charm 1 touch → reversal. No verdict; scored daily.
+
+**Order flow by type (6 days, research/unusual/uo*.py; single-leg 0DTE, orders = same contract/side/second; SPX 10/20/30
+min in the order's direction vs all orders that day in that direction; day bootstrap).** Biggest orders (1 in 10,000 for
+the half-hour, prior days' cut-off): −3.3 pts @20, 0/5 days. PM bought calls −3.2 (1/6); PM sold calls +2.7 (5/6, 63 %);
+AM bought puts −2.3 (2/5); AM sold puts +2.1 (3/5); AM bought calls +1.0 (noise; zero's 56–58 % not seen: 42 %).
+"Paying up" at-or-through = 78–85 % of all orders (no filter). SPX prints are all exchange C → no cross-exchange sweeps
+(SPY tape needed). ~40 comparisons on 6 days → expect 1–2 lucky ones. Pre-registered for out-of-sample scoring from 25
+Nov: H4 fade biggest orders, H5 PM sold calls follow, H6 AM bought puts fade (20 min).
+CAVEAT: with the app's exact v0.44.0 definition (single-leg, crosses dropped, implied delta) big orders on the 3
+scorable days were +0.3 / +20.5 / +0.5 — the "contrarian" reading is not robust to definition.
+
+**Unusual flags repainted (user 11:40).** Top-N of the day so far: running top-10 puts 65–78 % of flags in the first
+half hour (51/77, 59/112, 93/119, 52/78) — causal but blind later; whole-day top-N repaints. Fix (v0.44.0, APPROVE
+12:03): flags vs previous sessions' same-half-hour cut-offs (1 in N), baseline files per market/day, track record per
+flag, no-repaint test. 1 in 10,000 → 10–43 flags/day spread 10:00–15:00 (walk-forward on 18/23/24 Nov).
