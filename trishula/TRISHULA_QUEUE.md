@@ -4,6 +4,7 @@ Deployed: **v0.17.0**. Nothing gets built until the user types **APPROVE**. Depl
 Rules unchanged: whole zip every time (delete trishula/ → unzip → commit → Reboot app) · version on screen + CHANGELOG ·
 secrets only in Streamlit · one repo, no GitHub tokens · Colab scripts outside the repo, both tokens prefilled.
 
+## ✅ BUILT v0.44.0 (APPROVE 25 Nov 12:03 ET, pushed 16:23): unusual flags vs previous sessions' same-half-hour cut-offs (1 in N, no repaint, test) · paying up = strictly through the quote · drop crosses vs previous sessions · track record per flag · baseline core/data/unusual + unusual/ on trishula-state (25 Nov written by hand from the 14:00 copy — app stopped ~14:35, no 15:30/close copy) · Terrain pockets off by default
 ## ✅ BUILT v0.43.0 (APPROVE 25 Nov 08:40 ET, pushed premarket): Terrain defaults = Dan-match (naive · book .35 · Vol else OI · vw .25 · Aggregate · Percentile 95). Daily run re-checks the match on each new Dan chart.
 ## ⏳ QUEUED (needs APPROVE): Terrain/charm two-handle time slider · pink peak-γ rail only when in range + persistent · recorder saves call log + DT/Signals scorecards daily · keep intraday copy when close copy has fewer prints (+ re-upload 24 Nov 14:00 zip) · [mem] lines in status.json
 ## QUEUED (low priority, not approved): recorder `_initial_spot` stamps SPX with RECEIPT time — on (re)connect outside hours Friday's close counts as live SPX for 60 s (seen 16 Nov 05:10: spot 7,561.67 "spx" vs ~7,531 synth). Fix: stamp with the trade's own time (as `_l_trade` does). Needs reboot.
