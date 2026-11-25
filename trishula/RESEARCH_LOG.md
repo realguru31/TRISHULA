@@ -353,3 +353,89 @@ scorable days were +0.3 / +20.5 / +0.5 — the "contrarian" reading is not robus
 half hour (51/77, 59/112, 93/119, 52/78) — causal but blind later; whole-day top-N repaints. Fix (v0.44.0, APPROVE
 12:03): flags vs previous sessions' same-half-hour cut-offs (1 in N), baseline files per market/day, track record per
 flag, no-repaint test. 1 in 10,000 → 10–43 flags/day spread 10:00–15:00 (walk-forward on 18/23/24 Nov).
+
+## §23 · 25 Nov — daily research run #2 (scheduled; scoring only, nothing in the app changed)
+Data: lean files 5–25 Nov on trishula-state (12 valid days; 25 Nov to 14:33). Day zips 12, 16, 18, 20, 23 (14:00), 24, 25
+(14:00). Scripts + pre-registration: research/daily/2026-11-25/ (prereg.txt written 16:50 ET before any new test ran).
+App code scored = origin/main v0.44.0. Cost 0.5 pt per round trip. "Random" = same-day drift × direction.
+**25 Nov data problem:** no 15:30 and no close copy. The app stopped between 14:34 (last lean save, 304 RTH min) and
+14:49 (next save never came) and did not come back. 14:00 status looked healthy: v0.43.0, started 08:42, uptime 318 min,
+1.32 M prints, rss 1,488 MB (peak 1,668), 14 memory thins, 14 errors, book subscribed. The cause isn't recorded anywhere
+we can read. Memory is the likeliest suspect (it was still rising, and 24 Nov restarted at ~1.8 GB), but that's a guess.
+Use the 14:00 zip for 25 Nov. SPX closed 7182.78 (Yahoo), inside the 6970–7199 range already set by 14:33.
+state/calls/ still does not exist, so the option-priced call log can't be scored. state/bb_history.json keeps only the
+last 2 sessions (23 Nov is already gone), so the SPX BB research needs a daily archive copy.
+
+a) LEAN (single-leg 0DTE; 12 days; null = 200 time-shifted-flow runs; 25 Nov marked at 14:33 ≈ the close)
+   rule  total   days up  trades  all-prints  null p50/p95   pctile  halves (5–16 / 17–25)   25 Nov
+   A    +367.4    6/12      21      −10.0     −131 / +379     94 %    +247 / +120              +169.0 (1 trade: long 11:54 7015)
+   B    −213.7    6/12     127     +169.2     −162 / +335     45 %     −40 / −174               −72.7
+   D     +37.5    7/12      82     +164.2     −396 / +60      93 %     +91 / −54                +97.6
+   E    −312.3    6/12      98     −102.4      −50 / +381     16 %     −47 / −265               +20.7
+   A is now positive in both halves, and all-prints is worse. It still fails on day count (12 < 15) and on the null test
+   (94th percentile, needs > 95th). Two days carry it: 5 Nov +204 and 25 Nov +169, which is 1 trade each. Without its best day
+   A is +163. Not passed, but A is the only rule close to the bar.
+   E neighbourhood (12-day totals | days up), X rows × cooldown 5/10/15/20:
+     X 0.05: −77|5 +80|7 +45|6 +328|7 · 0.075: +48|7 +407|6 +222|8 +321|6 · 0.10: +175|7 +254|7 +426|9 +407|9
+     X 0.125 (cool 5/7/10/12/15): −72 −59 +73 +45 +97 · 0.15: −206 −373 −312 −255 −153 · 0.175/0.20: all ≤ −290
+   → E (X .15, cool 10) sits in a valley. The only positive area is a broad one at X 0.075–0.10 × cooldown 10–20 (6–9 of
+   12 days up), so it's a plateau, not a spike, but it's in-sample. Not refitted. Pre-registered as F1 = E with X 0.10 and
+   cooldown 15, scored forward from 26 Nov. Rolling-window lean variants almost never trade (0–15 trades in 12 days).
+   M1 two-sided bars ("money" state = sign of 15-bar Σ(buyers − sellers); flip = new state, ≥10 min apart, 09:45–15:29):
+     159 flips · 51 % right · edge vs drift +0.45 / −0.07 / +0.01 pts at 10/20/30 min · 6/12 days + at 20 → NO EDGE (FAIL).
+     Random times with the same up/down mix: −0.13 / 0.00 / +0.03.
+   M2 opening 5-min money vs gap → SPX 09:35–10:35: sign of the money was right on 11/12 days (+36 pts/day avg). It was right
+     with the gap 7/8 and against the gap 4/4. Post-hoc check: 3/10/15-min windows give 58/58/50 % and the SPX first-5-min move
+     alone gives 67 %. So the 5-min/60-min version is a SPIKE, not a plateau. It is kept as pre-registered (F2) and scored
+     forward only.
+b) DT tab (7 zip days, recomputed offline; edge20 = fw20 − random; signals overlap so t is optimistic)
+   DT v2 follow 24 sig · fw20 +2.5 · edge20 +6.0 · 59 % · 5/7 days + · follow & GEX>0 9 sig (2 d) edge20 +11.0
+   DT v2 initiation 94 · edge20 −2.4 · 1/7 days + (S5 identical) → consistently negative
+   S1 middle/more 166 · edge20 +3.7 · edge30 +5.4 · 6/7 days + (t 2.6) · S1 fewer 105 +1.5 (4/7)
+   S4 middle 25 · +6.2 · 6/7 · S6 fewer 77 +2.4 (6/7) · S6 middle/more +1.4 (4/7) · S7 more 40 +3.6 (4/6) · S3 all ≤ 0.
+   25 Nov: S1 middle +11.3 (18 sig), follow +5.9 (4), initiation +4.9 (5; first positive day), S3 more −18.7, S6 middle −13.4.
+c) ORDERFLOW
+   Extremes (12 lean days): fade 19 · 37 % · −5.0 @30 · follow 41 · 56 % · +2.5 (sess on: 23 · 61 % · +4.2, 4/9 days).
+     Walk-forward verdict (earlier days only): sess off 15 trades −94.7, sess on 12 trades −31.1. 25 Nov verdict SIT OUT
+     (both); the 4 follow events would have made +63 (sess on).
+   Unusual flags, v0.44.0 code (seed + state baselines, cuts from PREVIOUS sessions only; big / pay / burst exist from
+   20 Nov, the 4th session). SPX 20 min later × flag direction minus all single-leg orders that day in that direction:
+     new positions 7 days · 378 flags · +2.2 pooled · 7/7 days + (drop mid ON: 299 · +2.5 · 7/7) ← steadiest result so far
+     big orders    4 days · 56 · +7.0 · 2/4 days (drop crosses on: 3/4; drop mid on: 47 · +9.1 · 3/4)
+     paying up     3 days · 31 · +9.6 · 2/3 (drop mid on 3/3)
+     bursts        4 days · ~240 · −0.6 · 1/4 → no
+     drop crosses barely changes anything. Drop mid helps big/new a little (fewer flags, higher edge).
+     25 Nov (default settings): big 40 · +5.1 (app's own stored score +4.1) · new 25 · +3.8 (app +3.2) · pay 4 · +22.5 · burst 3 · +0.8.
+   Pre-registered 25 Nov, OUT OF SAMPLE day 1 (25 Nov) — order definitions as research/unusual/uo.py, 20 min:
+     H4 fade biggest orders: in-sample +2.4 (5/5 d) → OOS −10.4 (12 orders) ✗
+     H5 PM sold calls ≥20 follow: in-sample +2.4 (6/6) → OOS −3.0 (1,570 orders) ✗
+     H6 AM bought puts ≥20 fade: in-sample +2.8 (4/5) → OOS −5.0 ✗
+     AM bought calls ≥20 follow: in-sample +0.5 (2/5) → OOS −3.6 ✗
+     All four failed on day 1. Note H4 (FADE big) and the app's big flag (FOLLOW, +5.1 today) contradict each other. The
+     sign of "big orders" depends on the definition (as §22 warned).
+   Random-entry cost baseline (1DTE, 1 strike ITM, bought at the ask, sold at the bid 30 min later, random side and time,
+     910 entries / 7 days): −0.50 pts per contract (median −1.10), 45 % winners, entry spread 0.37. The call log must beat
+     −0.5/trade. Not scorable today (no state/calls).
+   N5 SPY "sweep" proxy (the SPY tape has no exchange field: ≥3 prints, ≥2 prices, ≥50 lots in one second): 4 days,
+     edge −1.6 pooled, 0/4 days + → FAIL. A true multi-exchange sweep test needs the exchange code on x_spy_prints.
+   ES / SPY single-leg net delta $ (5-min) vs SPX, 4 days: same-bar corr ES +0.33 · SPY +0.42 (25 Nov +0.71); next bar
+     ES 0.00 · SPY −0.19 (25 Nov +0.02). Same-bar only, no lead.
+d) SPX BB disconnect z (only 24 + 25 Nov are left in the file; 19 episodes): z>2 width −4.7 % vs straddle −4.3 % at 15 min;
+   z<−2 −10.7 % vs −11.1 %. The 15-min reversion seen on 23–24 Nov is gone. On 25 Nov it ran the wrong way (z>2: width −3.5
+   vs straddle −6.8). No edge.
+e) TERRAIN
+   (i) No VolSignals/Dan screenshots reach this scheduled run (they are chat attachments), so the shape score was skipped
+       today. Last scores: 24 Nov best = naive, 25 Nov 10:22 best = signed single-leg / opening book. Still no stable winner.
+   (ii) H1 γ at spot vs next-60-min range (34 checkpoints, 6 days with a 15:00 cut-off): current default rho +0.39 (p .02),
+       but within-day rho +0.08. The pooled correlation is day-level, and the setting is red 31/34 times, so H1 is NO.
+       H2 magnet to the nearest zero boundary: 38 % toward (n 16; control 25 %, n 8) → no magnet, if anything away.
+       H3 max/min lines (app defaults, 7 days incl. 25 Nov out of sample): Gamma 8 resolved touches (A MIN 4: 50 % vs null
+       38 %; B MAX 25 Nov 4: 75 % vs 68 %) · Delta Change 0 resolved touches · Charm B MIN 9: 22 % reversal vs null 39 %
+       (1/4 days) → no edge, Charm lines if anything break. Too few touches for a verdict on Gamma.
+f) NEW IDEAS (pre-registered 16:50 ET): M1 FAIL · M2 11/12 but a spike (forward only) · N4 morning lean (09:30–11:59 Σ)
+   → 12:00–15:30 direction 9/12 days (75 %), descriptive · N5 FAIL · N6 first-hour break: follow when the lean agrees /
+   fade when it disagrees = +17 pts on 11 events vs ALWAYS follow +125. Fading the "disagreeing" breaks lost −55, so the lean
+   filter hurts → FAIL.
+Verdict: nothing has 15 days, so nothing to APPROVE. Closest to the bar: lean A (12 days, both halves +, 94th pct), unusual
+"new positions" (7/7 days +), S1 middle (6/7), S4 middle (6/7), DT v2 follow (5/7). Consistently negative: DT initiation /
+S5 (1/7), extremes FADE, Charm lines as reversals, SPY sweep proxy. Forward-only candidates: F1 (E at X .10 / cool 15), F2 (M2).

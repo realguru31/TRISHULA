@@ -1,0 +1,31 @@
+2026-11-25 16:50 ET — daily research run #2 (scheduled). PRE-REGISTERED before any of these were run. Rules fixed, no
+tuning after. Data: state/lean/*.json (single-leg, 0DTE group g=0, $M delta) + day zips. Cost 0.5 pt where traded.
+"Random" = same-day drift x direction (mean of SPX h-min change over all RTH minutes of that day, times the sign).
+
+M1  Two-sided bars / "money" state flip (PRZM idea). Per 1-min bar: buyers = sl_bull, sellers = sl_bear (0DTE).
+    State = sign( sum over the last 15 bars of (buyers - sellers) ). A FLIP = the minute the state changes sign
+    (ignore flips before 09:45 and after 15:29; at most one flip per 10 min — later ones in the window skipped).
+    Prediction: SPX moves in the new state's direction. Score SPX 10/20/30 min after the flip x new direction,
+    minus random (same day drift x dir). Also vs 500 random minutes per day with random direction = same
+    up/down mix (reported as the random mean). Edge only if mean > 0 at 20 min AND >= 60 % of days positive.
+M2  Opening money vs gap. Gap = SPX 09:30 open - previous session's last lean-file SPX close (needs the prior day's
+    file). Opening money = sign( sum 09:30-09:34 of (sl_bull - sl_bear), 0DTE ). Outcome = SPX 10:35 close - 09:35
+    open. Report: hit rate of sign(money) for the outcome, and split money-agrees-with-gap vs disagrees. n = days
+    (tiny) — descriptive only, no verdict before 15 days.
+N4  Morning lean -> afternoon. Sign of cumulative single-leg 0DTE (bull - bear) 09:30-11:59 predicts SPX
+    12:00 -> 15:30 (or the last bar of the file) direction. Hit rate over days + mean pts. Descriptive until 15 days.
+N5  SPY "sweep" proxy (the SPY tape has NO exchange field, so a true multi-exchange sweep can't be seen): an order =
+    same SPY 0DTE contract, same side, same second, single-leg, RTH; SWEEP = >= 3 prints AND >= 2 distinct prices
+    AND >= 50 contracts. Direction = bull (calls bought / puts sold) or bear. Score SPX 20 min later x direction minus
+    the mean of ALL SPY orders that day in the same direction (as the unusual track record). Edge only if > 0 and
+    >= 60 % of days positive (days with >= 3 sweeps).
+N6  First-hour range break + lean. After 10:30, the FIRST minute SPX closes above the 09:30-10:29 high (or below the
+    low), up to 15:00. Lean agree = sign of the last 15 min single-leg 0DTE (bull - bear) equals the break direction.
+    FOLLOW the break when the lean agrees, FADE when it disagrees. SPX 30 min later, minus 0.5 cost. Compare with
+    "always follow". One event per side per day max.
+
+ADDENDUM (written after this run's results, for FORWARD scoring only — from 26 Nov on, nothing refitted):
+F1  E-neighbourhood candidate: E with X 0.10, cooldown 15 (everything else as E). It sits in the only positive region of
+    the grid (X 0.075-0.10 x cooldown 10-20); scored forward next to E, same PASS bar as the locked rules.
+F2  M2 kept exactly as above (5-min opening money -> 09:35-10:35). In-sample it is a spike (3/10/15-min windows 50-67 %),
+    so only forward days count.
