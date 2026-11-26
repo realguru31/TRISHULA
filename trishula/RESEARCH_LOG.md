@@ -439,3 +439,39 @@ f) NEW IDEAS (pre-registered 16:50 ET): M1 FAIL · M2 11/12 but a spike (forward
 Verdict: nothing has 15 days, so nothing to APPROVE. Closest to the bar: lean A (12 days, both halves +, 94th pct), unusual
 "new positions" (7/7 days +), S1 middle (6/7), S4 middle (6/7), DT v2 follow (5/7). Consistently negative: DT initiation /
 S5 (1/7), extremes FADE, Charm lines as reversals, SPY sweep proxy. Forward-only candidates: F1 (E at X .10 / cool 15), F2 (M2).
+
+## §24 · 26 Nov (Thanksgiving) — daily research run #3 (scheduled; scoring only, nothing in the app changed)
+**No session today.** US cash markets were closed for Thanksgiving, so there's no data-2026-11-26 release and no new lean file.
+25 Nov is still only on the 14:00 copy (no 15:30 or close copy was ever shipped; see §23). The cumulative numbers in §23
+therefore stand. All of them were re-run today from scratch on origin/main v0.44.0 with the same scripts
+(research/daily/2026-11-26/) and reproduced exactly: lean A/B/D/E, E grid, extremes, unusual v44, H4–H6, DT/Signals, M1, M2, N4–N6.
+The forward-only candidates (F1, F2, and H4–H6 out of sample) get no new day. Their next scoring is Fri 27 Nov (half day, 13:00 close).
+**New today: the SPX BB history is recoverable.** state/bb_history.json only keeps a few expiries, but the app commits it
+every minute, so the trishula-state git history has every version (8,750 commits since 16 Nov 12:14). bbarch.py rebuilds
+the longest series and straddle per expiry. Archive = research/daily/2026-11-26/bb_archive.json: expiries 16–25 Nov plus
+27/30 Nov overnight. RTH coverage: 17, 18, 19, 23, 24, 25 Nov full; 20 Nov to 15:11; 16 Nov series without straddle quotes.
+Future runs should append to this archive instead of relying on the live file. Side note: the BB writer committed
+~1,400–2,000 times a day, including overnight and into Thanksgiving morning (last commit 05:17 ET). That's a lot of churn on the
+state branch, but it is harmless for research.
+Data check (Yahoo ^GSPC): the lean-file SPX closes match: 20 Nov 6918 (Yahoo 6910.39), 23 Nov open 7227.41 = +317 gap.
+That gap is real.
+d) SPX BB disconnect z, now on 7 sessions (17–25 Nov, 65 episodes, |z|>2 with a 30-min cooldown per sign; x = width %chg minus
+   straddle %chg, e = x minus that day's all-minute baseline):
+     z>+2 (width rich vs straddle): e15 −2.2 (2/7 days +) · e30 −0.1 (3/7) · e60 −3.9 (1/7) → width under-performs at 60 min 6/7 days
+     z<−2 (width cheap):            e15 +4.0 (5/7) · e30 +1.4 (4/7) · e60 +3.8 (7/7 days +)
+   So there's reversion at 60 min on both sides, 7/7 and 6/7 days. Caveat: the width is the distance between the 0.05-bid
+   strikes (5-pt steps), a noisy, discrete ratio, so some reversion after a 2-sigma print is mechanical. It isn't directly
+   tradable as measured. Descriptive; needs 15 sessions. 30 min shows nothing (±1).
+f) NEW IDEAS (pre-registered 16:52 ET in research/daily/2026-11-26/prereg.txt, before running; new3.py):
+   N7 last-hour flow (0DTE single-leg 15:00–15:29) → SPX 15:30–15:59: 8 days, right 3/8, −5.6 pts/day after cost
+      (edge vs drift −4.2) → FAIL.
+   N8 short ATM 0DTE straddle at the app's own quote, held to the close (−0.5): 6 days. 10:00 entry −5.8/day (4/6 +; one −143
+      day, 19 Nov) · 12:00 −6.5 (3/6) · 14:00 +11.3/day (4/6, +68 total). Read: no variance premium in the morning quotes in this
+      fast tape (19/20/25 Nov had big trend days). The 14:00 entry was positive, but that's 6 days and a fat-tailed P&L.
+      Descriptive.
+   N9 opening gap fade (|gap| ≥ 5, 09:35 → 10:30): 6 days (consecutive sessions only), fade right 3/6, −98.5 total; following
+      the gap +92.5 instead, but that's almost all 23 Nov (+97 after the +317 gap) → FAIL as a fade. No claim for follow (1 day carries it).
+Verdict: unchanged. Nothing has 15 days, so nothing to APPROVE. Closest: lean A (12 days, 94th pct), unusual "new positions"
+(7/7 days + at 20 min), S1 middle / S4 middle (6/7), DT v2 follow (5/7), BB-z 60-min reversion (7/7 / 6/7, descriptive).
+Still missing: state/calls/ (the option-priced call log can't be scored), no VolSignals/Dan screenshots reach the
+scheduled run (Terrain shape not scored), no exchange code on x_spy_prints (no true sweep test).

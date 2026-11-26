@@ -1,0 +1,13 @@
+2026-11-26 16:52 ET — daily research run #3 (scheduled; Thanksgiving, US cash market closed, no new session).
+PRE-REGISTERED before any of N7-N9 was run. Rules fixed, no tuning after. Data: state/lean/*.json (single-leg, 0DTE
+group g=0) and the SPX BB archive rebuilt from the trishula-state git history (bb_archive.json, expiries 16-25 Nov).
+"Random" = same-day drift x direction. Cost 0.5 pt per round trip where traded. Descriptive only until 15 days.
+
+N7  Last-hour flow -> close. Sign of sum(sb - sr) of 0DTE single-leg 15:00-15:29 predicts SPX 15:30 -> 15:59 bar close.
+    Days whose SPX series reaches 15:59 only. Report hit rate over days, mean pts minus cost, minus random.
+N8  Trishula's own 0DTE straddle quote vs realised. From bb strad[expiry=day] take the first quote at/after 10:00,
+    12:00 and 14:00 (strike K, price P). Short-straddle P&L held to the close = P - |SPX last 'spx' spot <= 16:00 - K|
+    - 0.5. Report per day and mean for each entry time. (Measures the variance premium in the app's own quotes.)
+N9  Opening gap fade. Gap = SPX 09:30 bar open - previous saved session's last SPX close, only when the previous
+    saved lean day is the previous trading day. If |gap| >= 5 pts: FADE from the 09:35 bar close to the 10:30 bar close.
+    Report hits, mean minus cost, and "follow" (the opposite) for comparison.
