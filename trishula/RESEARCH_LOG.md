@@ -475,3 +475,57 @@ Verdict: unchanged. Nothing has 15 days, so nothing to APPROVE. Closest: lean A 
 (7/7 days + at 20 min), S1 middle / S4 middle (6/7), DT v2 follow (5/7), BB-z 60-min reversion (7/7 / 6/7, descriptive).
 Still missing: state/calls/ (the option-priced call log can't be scored), no VolSignals/Dan screenshots reach the
 scheduled run (Terrain shape not scored), no exchange code on x_spy_prints (no true sweep test).
+
+## §25 · 27 Nov (half day, 13:00 close) — daily research run #4 (scheduled; scoring only, nothing in the app changed)
+**Data problem: the app recorded nothing today.** No data-2026-11-27 release (no 12:00 / close copy), no state/lean/2026-11-27.json,
+no unusual/2026-11-27_*.json, and no trishula-state commit at all after 26 Nov 05:17 ET (the BB writer, which commits every
+minute while the app runs, stopped then). So the app has been down or asleep since Thanksgiving morning and missed the whole
+Friday session. There is no status.json to read for today, so the cause can't be confirmed. Likeliest guess: nobody opened it
+over the holiday and the host put it to sleep; it was not a memory restart (no zip at all). **Open it before Monday 09:30.**
+The market did trade: Yahoo ^GSPC open 7262.61 (+79.8 gap over 25 Nov's 7182.78), low 7211.46 (10:05), close 7297.49 (+1.6 %).
+Consequence: F1, F2 and the out-of-sample H4–H6 get no day 2. Every cumulative number in §23 (lean, DT/Signals, extremes,
+unusual, H4–H6) and §24 (SPX BB) stands unchanged. lean2.py was re-run on origin/main v0.44.0 as a sanity check and
+reproduced the §23 E grid exactly. Scripts, pre-registration and outputs: research/daily/2026-11-27/ (prereg.txt written
+16:49 ET before N10–N12 / TG were run). All of today's work is IN-SAMPLE on the 7 zip days / 12 lean days.
+
+Price-only proxies for today (Yahoo 5-min bars, not the app's feed, so they're not added to any cumulative):
+  N9 gap fade (09:35 → 10:30): +79.8 gap, short 7247.6 → 7245.2 = +2.0 after cost (fade right, barely). The 09:30–10:05 drop to
+  7211 was the fade; the rest of the day followed the gap.
+  N11 ORB30 (below): break up at 10:45 (5-min close 7271.8 > OR high 7271.4) → 11:45 7278.2 = +6.0 after cost.
+
+e) TERRAIN — TG, full coded grid on raw data (pre-registered). Gamma field, 400 configs = sign source (naive / signed all /
+   single-leg / opening) × expiry set (0DTE, 0+1DTE, 0DTE+book.35, 0DTE+book1, 0+1DTE+book.35) × 4 weightings × volume weight
+   (.05/.25/1 where volume enters) × Aggregate / Per-strike. Colour scale, power and pockets are monotone display transforms, so
+   they can't move the field's sign or the zero boundary and are not separate configs here. Hourly checkpoints 10:00–15:00.
+   **Coverage is the bottleneck:** chain snapshots exist only from 15:30 on 20 Nov and from 14:00 on 24 Nov (restarts), and 12 Nov
+   has no book.parquet. So it's 15–18 checkpoints per config on 4–6 days.
+   H1' (within-day rho, field at spot vs next-60-min range; prediction < 0): rho runs −0.38 … +0.44 across configs (median +0.06).
+     The best is signed all · 0DTE+book1 · Aggregate at −0.38, but the max-null (same 400 configs, outcome shuffled within day,
+     200×) puts the 5th percentile of the best config at −0.63. So the best config is well inside noise → **NO**.
+   H2' (move toward the nearest zero boundary): only 0–5 checkpoints per config have a boundary within ±60 pts at all, so the
+     100 % rates are 1–2 events. The max-null 95th pct is also 100 % → **no information**.
+   Descriptive: Aggregate mode reads red (−γ) at spot 80 % of the time vs Per-strike 40 %. Naive is red 73 %, signed / opening 22–40 %.
+     The sign at spot depends more on the setting than on the market. The current default (naive · 0DTE+book.35 · Vol-else-OI .25 ·
+     Aggregate) has rho +0.19, i.e. the wrong way.
+   (i) Shape vs Dan: no screenshots reach the scheduled run → skipped. H3 (max/min lines): no new day.
+   Verdict: there is still no Terrain setting with evidence on raw data. A fair test needs full-day chain snapshots on ≥15 days.
+
+f) NEW IDEAS (pre-registered 16:49 ET)
+   N10 robustness of unusual "new positions" (v0.44.0 defaults, walk-forward cut-offs, edge vs that day's same-direction orders):
+       h10 n 376 · +0.47 pooled · 4/7 days + │ h20 n 374 · +2.37 · 7/7 │ h30 n 361 · +2.23 · 6/7
+       h20 AM (<12:00) 175 · +3.49 · 5/6 days │ PM 199 · +1.40 · 6/6
+       leave-one-day-out pooled edge at 20: +2.21 … +2.63 (no single day carries it)
+       Per day h20: 12 Nov +0.5 · 16 +3.3 · 18 +1.0 · 20 +2.3 · 23 +2.9 · 24 +2.9 · 25 +3.8
+       → **PASS** on the pre-registered robustness rule (in-sample). Caveats: flags overlap in time (the t-stats would be
+       optimistic, so none are quoted); it's 7 days, not 15; the 10-min edge is small, so the effect builds over 20–30 min.
+       It's an SPX-point edge, not an option P&L: through options it still has to beat the −0.5/contract random-entry cost.
+   N11 ORB30 price-only yardstick (first 1-min close outside the 09:30–09:59 range, 10:00–12:59, hold 60 min): 12 lean days,
+       traded 12/12, right 58 %, +5.6/day, +67 total, but edge vs drift −1.4 and 7/12 days + → no edge. That's the bar: a flow
+       rule that can't beat ≈ +5.6/day raw / −1.4 vs drift isn't adding anything over price.
+   N12 0DTE GEX sign (naive, app's T.gamma_exposure_minis) → lag-1 autocorr of 5-min SPX returns next 30 min: +GEX 11 windows
+       (2 days) +0.10 · −GEX 25 windows (5 days) +0.09. Only 12 Nov had both regimes. The regime is nearly constant within a day
+       → **no difference, untestable on this data** (FAIL as stated).
+
+Verdict: nothing has 15 days, so nothing to APPROVE. The leading candidate is now firmer: unusual **new positions** passed its
+pre-registered robustness test (h20/h30 +, AM and PM +, every leave-one-day-out +). Next to it: lean A (12 days, 94th pct),
+S1 middle / S4 middle (6/7), DT v2 follow (5/7). Missed day: 27 Nov. Next forward scoring is Mon 30 Nov, if the app is running.

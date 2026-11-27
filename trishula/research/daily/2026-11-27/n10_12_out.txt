@@ -1,0 +1,31 @@
+N10 new positions — event-level edge (pts), days positive
+ h10: n 376 pooled +0.47 day-avg +0.93 days+ 4/7
+ h20: n 374 pooled +2.37 day-avg +2.38 days+ 7/7
+ h30: n 361 pooled +2.23 day-avg +1.91 days+ 6/7
+ h20 AM <12:00: n 175 pooled +3.49 days+ 5/6
+ h20 PM >=12:00: n 199 pooled +1.40 days+ 6/6
+ leave-one-day-out pooled edge at 20: {'2026-11-12': np.float64(2.62), '2026-11-16': np.float64(2.21), '2026-11-18': np.float64(2.63), '2026-11-20': np.float64(2.38), '2026-11-23': np.float64(2.27), '2026-11-24': np.float64(2.23), '2026-11-25': np.float64(2.27)}
+ per day h20: {'2026-11-12': {'count': 44, 'mean': 0.54}, '2026-11-16': {'count': 57, 'mean': 3.29}, '2026-11-18': {'count': 58, 'mean': 1.0}, '2026-11-20': {'count': 41, 'mean': 2.34}, '2026-11-23': {'count': 65, 'mean': 2.87}, '2026-11-24': {'count': 84, 'mean': 2.89}, '2026-11-25': {'count': 25, 'mean': 3.76}}
+       day     t  dir   ORw   move    pnl  edge
+2026-11-05 10:02 -1.0 130.5 -118.6  118.1  85.6
+2026-11-09 10:02  1.0  82.0   27.8   27.3  14.9
+2026-11-10 10:00  1.0  39.4  -39.0  -39.5 -38.3
+2026-11-11 10:51  1.0  31.6   15.2   14.7   8.0
+2026-11-12 10:51  1.0  60.2   22.2   21.7  21.8
+2026-11-16 10:00 -1.0  31.8   10.4  -10.9 -23.3
+2026-11-17 10:05 -1.0  21.6  -52.4   51.9  34.5
+2026-11-18 10:48 -1.0  64.5   -6.5    6.0   4.2
+2026-11-20 10:00  1.0  54.2 -108.4 -108.9 -69.6
+2026-11-23 10:20  1.0 107.5   -7.1   -7.6 -10.0
+2026-11-24 10:03  1.0  78.8  -66.4  -66.9 -65.5
+2026-11-25 12:06  1.0  90.2   62.0   61.5  21.2
+ traded 12/12 days · right 58% · mean +5.6 · total +67.4 · edge vs drift -1.4 · days + 7/12
+ +GEX: 11 windows on 2 days · lag-1 autocorr +0.10 (pairs 55)
+ -GEX: 25 windows on 5 days · lag-1 autocorr +0.09 (pairs 125)
+  2026-11-12: +GEX +0.19 · -GEX +0.25
+  2026-11-16 one regime only: -GEX 6
+  2026-11-18 one regime only: -GEX 8
+  2026-11-23 one regime only: +GEX 8
+  2026-11-24 one regime only: -GEX 2
+  2026-11-25 one regime only: -GEX 8
+ inequality ac(+) < ac(-) held 1/1 days with both regimes

@@ -1,0 +1,31 @@
+2026-11-27 16:49 ET — daily research run #4 (scheduled). Fri 27 Nov was a half day (13:00 close) and the app recorded
+NOTHING (no data-2026-11-27 release, no lean file, no trishula-state commit after 26 Nov 05:17 ET). So no forward day for
+F1, F2, H4-H6. Everything below runs on the 7 saved zip days / 12 lean days already used in §23-§24 => IN-SAMPLE work.
+PRE-REGISTERED before any of N10-N12 / TG was run. Rules fixed, no tuning after. Cost 0.5 pt per round trip where traded.
+
+TG  Terrain FULL coded grid on raw data (the §23 H1/H2 ran only 2 configs). Gamma field, every coded combination:
+    sign source {naive, signed all-prints (chain dsign), signed single-leg, opening(seed)} x expiry set {0DTE, 0+1DTE,
+    0DTE+book.35, 0DTE+book1, 0+1DTE+book.35} x weighting {OI+Vol, OI, Vol, Vol-else-OI} x vol weight {.05,.25,1} (only where
+    volume enters) x field mode {Aggregate, Per-strike} = 400 configs. Colour scale (Dan +-250 / Pctl 95 / 99 / StdDev),
+    power (.4/1) and pockets are monotone display transforms: they do not move the sign of the field or the zero boundary,
+    so they are not separate configs for H1/H2 (stated, not tested). Checkpoints every 60 min 10:00-15:00 on the 7 zip days
+    (fewer where the copy ends earlier), needs >= 50 future minutes.
+    H1': within-day Spearman rho between field-at-spot and next-60-min high-low range (day-demeaned). Prediction: rho < 0.
+    H2': share of checkpoints where SPX moves toward the nearest zero boundary (|dist| > 2) within 60 min. Prediction > 50 %.
+    Multiple testing: compare the BEST config's rho / H2 share with the best of the same 400 configs after shuffling the
+    outcome within each day (200 shuffles). A config only counts if it beats the 95th pct of that max-null.
+
+N10 Robustness of the leading candidate, unusual "new positions" (v0.44.0 UN.detect, default settings, walk-forward cuts),
+    same score as uv44 (SPX h min later x flag direction minus that day's same-direction all-order baseline):
+    (a) h = 10 and 30 as well as 20, (b) split by flag time < 12:00 vs >= 12:00 ET, (c) leave-one-day-out pooled edge at 20.
+    PASS if edge > 0 at all three horizons AND in both halves AND every leave-one-day-out pooled edge > 0.
+
+N11 Price-only benchmark: 30-min opening-range break. First 1-min SPX close outside the 09:30-09:59 high/low between 10:00
+    and 12:59 -> enter in the break direction at that close, exit 60 min later (or last bar). One trade per day. Score pts
+    minus cost and minus same-day 60-min drift x direction. Days: all lean days (SPX 1-min from the lean file); today
+    27 Nov scored from Yahoo ^GSPC 5-min as a proxy and reported separately. Purpose: a yardstick the flow rules must beat.
+
+N12 GEX regime -> short-horizon autocorrelation. At each 30-min checkpoint 10:00-15:00 compute the 0DTE dealer GEX sign at
+    spot with the app's T.gamma_exposure_minis (signed=False, naive book) on the latest chain snapshot. Over the next 30 min,
+    take non-overlapping 5-min SPX returns and their lag-1 autocorrelation. Prediction: autocorr(+GEX) < autocorr(-GEX)
+    (pinning vs trending). Report pooled per regime, and days where the inequality holds.

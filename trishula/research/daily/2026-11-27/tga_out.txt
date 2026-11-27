@@ -1,0 +1,49 @@
+configs 400 · checkpoints per config median 15.0 · days 6.0
+rho distribution (within-day): min -0.38 p5 -0.19 median 0.06 p95 0.39 max 0.44
+toward share: min 0% median 57% max 100%
+
+best 8 by most negative rho (H1 prediction rho<0):
+                                                             rho  toward     n   nh  days   red
+signed all|0DTE+book1|Vol else OI (legacy)|1.0|Aggregate   -0.38     0.0  15.0  2.0   4.0  1.00
+signed all|0DTE+book1|OI + Volume|1.0|Aggregate            -0.38     0.0  15.0  2.0   4.0  1.00
+opening|0DTE+book.35|Vol else OI (legacy)|0.25|Aggregate   -0.36     0.0  15.0  1.0   4.0  0.93
+opening|0+1DTE+book.35|Vol else OI (legacy)|0.25|Aggregate -0.35     0.0  15.0  1.0   4.0  0.93
+opening|0DTE+book.35|OI + Volume|0.25|Aggregate            -0.35     0.0  15.0  1.0   4.0  0.93
+opening|0+1DTE+book.35|OI + Volume|0.25|Aggregate          -0.34     0.0  15.0  1.0   4.0  0.93
+opening|0+1DTE+book.35|OI + Volume|0.05|Aggregate          -0.29     NaN  15.0  0.0   4.0  1.00
+opening|0DTE+book1|Vol else OI (legacy)|1.0|Aggregate      -0.28     0.0  15.0  1.0   4.0  0.93
+
+best 8 by toward share (H2 prediction >50%):
+                                                              rho  toward     n   nh  days   red
+opening|0DTE+book1|Volume (today's flow)|1.0|Aggregate      -0.09     1.0  15.0  2.0   4.0  0.07
+opening|0+1DTE+book.35|Volume (today's flow)|1.0|Aggregate  -0.11     1.0  15.0  2.0   4.0  0.00
+opening|0+1DTE+book.35|Volume (today's flow)|0.05|Aggregate -0.11     1.0  15.0  2.0   4.0  0.00
+opening|0DTE+book.35|Volume (today's flow)|0.05|Aggregate   -0.09     1.0  15.0  2.0   4.0  0.07
+opening|0DTE+book.35|Volume (today's flow)|0.25|Aggregate   -0.09     1.0  15.0  2.0   4.0  0.07
+opening|0DTE+book.35|Volume (today's flow)|1.0|Aggregate    -0.09     1.0  15.0  2.0   4.0  0.07
+naive|0+1DTE|OI (opening book)|1.0|Aggregate                -0.12     1.0  18.0  1.0   6.0  0.94
+opening|0+1DTE+book.35|Volume (today's flow)|0.25|Aggregate -0.11     1.0  15.0  2.0   4.0  0.00
+
+max-null (200 within-day shuffles): best-config rho 5th pct -0.63 (observed best -0.38) · best toward 95th pct 100% (observed best 100%)
+  naive|0DTE+book.35|Vol else OI (legacy)|0.25|Aggregate {'rho': 0.19, 'toward': 0.4, 'n': 15.0, 'nh': 5.0, 'days': 4.0, 'red': 0.93}
+  naive|0DTE|OI (opening book)|1.0|Aggregate {'rho': -0.15, 'toward': 0.25, 'n': 18.0, 'nh': 4.0, 'days': 6.0, 'red': 0.72}
+
+by sign source (median over configs):
+             rho  toward   red
+naive       0.13    0.50  0.73
+opening    -0.01    0.58  0.22
+signed all  0.05    0.71  0.40
+single-leg  0.09    0.62  0.33
+
+by expiry set:
+                 rho  toward   red
+0+1DTE          0.05    0.59  0.39
+0+1DTE+book.35  0.05    0.54  0.47
+0DTE            0.05    0.58  0.31
+0DTE+book.35    0.07    0.50  0.47
+0DTE+book1      0.08    0.50  0.47
+
+by field mode:
+             rho  toward  red
+Aggregate  -0.02    0.50  0.8
+Per-strike  0.16    0.59  0.4
